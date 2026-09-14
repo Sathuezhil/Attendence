@@ -1,1 +1,0 @@
-export const OBJECT_STORAGE = 'OBJECT_STORAGE';

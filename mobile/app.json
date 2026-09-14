@@ -14,11 +14,7 @@
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocalNetworkUsageDescription": "Employee Management connects to your company server on the local network during development.",
-        "NSPhotoLibraryUsageDescription": "Choose passport, visa, and ID photos to attach to employee documents.",
-        "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true
-        }
+        "NSPhotoLibraryUsageDescription": "Choose passport, visa, and ID photos to attach to employee documents."
       }
     },
     "android": {
