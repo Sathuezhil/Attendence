@@ -5,6 +5,8 @@ export interface DashboardSummary {
   presentToday: number;
   absentToday: number;
   lateToday: number;
+  documentsExpired: number;
+  documentsExpiringSoon: number;
 }
 
 export interface DashboardActivity {

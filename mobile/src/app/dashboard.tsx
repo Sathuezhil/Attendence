@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { type Href, router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -9,8 +9,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/auth-context';
 import { DashboardHeader } from '@/features/dashboard/dashboard-header';
+import { ExpiryAlerts } from '@/features/dashboard/expiry-alerts';
 import { QuickActions } from '@/features/dashboard/quick-actions';
 import { RecentActivityList } from '@/features/dashboard/recent-activity-list';
 import { SummaryCards } from '@/features/dashboard/summary-cards';
@@ -18,6 +20,7 @@ import {
   useDashboardSummaryQuery,
   useRecentActivityQuery,
 } from '@/features/dashboard/use-dashboard-queries';
+import { fetchExpiryAlerts, fetchUnreadCount } from '@/features/notifications/api';
 import { ApiError } from '@/lib/api';
 
 export default function DashboardScreen() {
@@ -25,6 +28,16 @@ export default function DashboardScreen() {
   const canLoadDashboard = isReady && isAuthenticated;
   const summaryQuery = useDashboardSummaryQuery(canLoadDashboard);
   const activityQuery = useRecentActivityQuery(canLoadDashboard);
+  const unreadQuery = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: fetchUnreadCount,
+    enabled: canLoadDashboard,
+  });
+  const alertsQuery = useQuery({
+    queryKey: ['dashboard', 'expiry-alerts'],
+    queryFn: fetchExpiryAlerts,
+    enabled: canLoadDashboard,
+  });
 
   useEffect(() => {
     if (isReady && !isAuthenticated) {
@@ -73,7 +86,12 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <DashboardHeader user={user} onLogout={() => void handleLogout()} />
+        <DashboardHeader
+          user={user}
+          unreadCount={unreadQuery.data?.count ?? 0}
+          onOpenNotifications={() => router.push('/notifications' as Href)}
+          onLogout={() => void handleLogout()}
+        />
 
         <View style={styles.section}>
           {summaryQuery.isPending ? (
@@ -98,6 +116,21 @@ export default function DashboardScreen() {
 
           {summaryQuery.data ? <SummaryCards summary={summaryQuery.data} /> : null}
         </View>
+
+        {alertsQuery.isPending ? (
+          <View style={styles.panel}>
+            <ActivityIndicator color="#111827" />
+            <Text style={styles.panelText}>Loading expiry alerts…</Text>
+          </View>
+        ) : null}
+
+        {alertsQuery.error && !(alertsQuery.error instanceof ApiError && alertsQuery.error.status === 401) ? (
+          <View style={styles.panel}>
+            <Text style={styles.errorText}>{alertsQuery.error.message}</Text>
+          </View>
+        ) : null}
+
+        {alertsQuery.data ? <ExpiryAlerts alerts={alertsQuery.data} /> : null}
 
         <QuickActions />
 

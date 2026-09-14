@@ -43,17 +43,26 @@ enum AttendanceSource {
 }
 
 enum InvoiceStatus {
+  DRAFT
+  SENT
   PAID
-  PENDING
+  PARTIALLY_PAID
+  OVERDUE
   CANCELLED
 }
 
 enum DocumentType {
+  PASSPORT
+  VISA
+  EMIRATES_ID
+  WORK_PERMIT
+  LABOUR_CONTRACT
+  INSURANCE
+  OTHER
   PASSPORT_SCAN
   VISA_SCAN
   CONTRACT
   NATIONAL_ID
-  OTHER
 }
 
 enum BackupType {
@@ -69,10 +78,42 @@ enum BackupStatus {
   FAILED
 }
 
+enum LeaveType {
+  ANNUAL
+  SICK
+  UNPAID
+  EMERGENCY
+  OTHER
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum NotificationType {
+  DOCUMENT_EXPIRING
+  DOCUMENT_EXPIRED
+  LEAVE_APPROVED
+  LEAVE_REJECTED
+  ATTENDANCE_ALERT
+}
+
+enum PayrollPaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 enum AppSettingKey {
   VISA_EXPIRY_REMINDER_DAYS
   PASSPORT_EXPIRY_REMINDER_DAYS
   ATTENDANCE_HOURS
+  DOCUMENT_EXPIRY_WARNING_DAYS
+  DOCUMENT_EXPIRY_URGENT_DAYS
+  PAYROLL_WORKING_DAYS_PER_MONTH
 }
 
 /// Boss/admin account. passwordHash and twoFactorSecret must never be returned by the API.
@@ -88,6 +129,7 @@ model User {
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   refreshTokens    RefreshToken[]
   auditLogs        AuditLog[]
+  approvedLeaves   Leave[]
 
   @@map("users")
 }
@@ -131,8 +173,10 @@ model Employee {
   passports      Passport[]
   visas          Visa[]
   attendances    Attendance[]
-  invoices       Invoice[]
+  leaves         Leave[]
   documents      Document[]
+  notifications  Notification[]
+  payrollRecords PayrollRecord[]
 
   @@index([status])
   @@index([department])
@@ -205,47 +249,149 @@ model Attendance {
   @@map("attendances")
 }
 
-/// documentUrl stores a private object-storage key, never a public file URL or binary data.
-model Invoice {
-  id            String        @id @default(uuid())
-  employeeId    String        @map("employee_id")
-  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  invoiceNumber String        @unique @map("invoice_number")
-  invoiceMonth  Int           @map("invoice_month")
-  invoiceYear   Int           @map("invoice_year")
-  amount        Decimal       @db.Decimal(12, 2)
-  vatAmount     Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
-  totalAmount   Decimal       @map("total_amount") @db.Decimal(12, 2)
-  status        InvoiceStatus @default(PENDING)
-  invoiceDate   DateTime      @map("invoice_date") @db.Date
-  paymentDate   DateTime?     @map("payment_date") @db.Date
-  documentUrl   String?       @map("document_url")
-  notes         String?
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+model Leave {
+  id              String             @id @default(uuid())
+  employeeId      String             @map("employee_id")
+  employee        Employee           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveType       LeaveType          @map("leave_type")
+  startDate       DateTime           @map("start_date") @db.Date
+  endDate         DateTime           @map("end_date") @db.Date
+  totalDays       Int                @map("total_days")
+  reason          String?
+  status          LeaveRequestStatus @default(PENDING)
+  approvedById    String?            @map("approved_by")
+  approvedBy      User?              @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt      DateTime?          @map("approved_at") @db.Timestamptz(6)
+  rejectionReason String?            @map("rejection_reason")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([employeeId])
+  @@index([startDate])
+  @@index([endDate])
   @@index([status])
-  @@index([invoiceYear, invoiceMonth])
+  @@map("leaves")
+}
+
+/// Customer invoices are independent of employee payroll. Totals are calculated on the backend.
+model Invoice {
+  id              String        @id @default(uuid())
+  invoiceNumber   String        @unique @map("invoice_number")
+  customerName    String        @map("customer_name")
+  customerEmail   String?       @map("customer_email")
+  customerPhone   String?       @map("customer_phone")
+  customerAddress String?       @map("customer_address")
+  invoiceDate     DateTime      @map("invoice_date") @db.Date
+  dueDate         DateTime      @map("due_date") @db.Date
+  status          InvoiceStatus @default(DRAFT)
+  subtotal        Decimal       @db.Decimal(12, 2)
+  taxAmount       Decimal       @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  discountAmount  Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  totalAmount     Decimal       @map("total_amount") @db.Decimal(12, 2)
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items           InvoiceItem[]
+
+  @@index([status])
+  @@index([invoiceDate])
+  @@index([dueDate])
+  @@index([customerName])
+  @@index([createdAt])
   @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String   @map("invoice_id")
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal  @db.Decimal(12, 3)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(12, 2)
+  taxRate     Decimal  @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  discount    Decimal  @default(0) @db.Decimal(12, 2)
+  lineTotal   Decimal  @map("line_total") @db.Decimal(12, 2)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+/// One payroll row per employee per calendar month. Totals are calculated on the backend.
+model PayrollRecord {
+  id                    String                @id @default(uuid())
+  employeeId            String                @map("employee_id")
+  employee              Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payrollMonth          Int                   @map("payroll_month")
+  payrollYear           Int                   @map("payroll_year")
+  basicSalary           Decimal               @map("basic_salary") @db.Decimal(12, 2)
+  allowances            Decimal               @default(0) @db.Decimal(12, 2)
+  overtimeAmount        Decimal               @default(0) @map("overtime_amount") @db.Decimal(12, 2)
+  deductions            Decimal               @default(0) @db.Decimal(12, 2)
+  unpaidLeaveDeduction  Decimal               @default(0) @map("unpaid_leave_deduction") @db.Decimal(12, 2)
+  otherDeductions       Decimal               @default(0) @map("other_deductions") @db.Decimal(12, 2)
+  unpaidLeaveDays       Int                   @default(0) @map("unpaid_leave_days")
+  grossSalary           Decimal               @map("gross_salary") @db.Decimal(12, 2)
+  netSalary             Decimal               @map("net_salary") @db.Decimal(12, 2)
+  paymentStatus         PayrollPaymentStatus  @default(PENDING) @map("payment_status")
+  paymentDate           DateTime?             @map("payment_date") @db.Date
+  notes                 String?
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([employeeId, payrollMonth, payrollYear])
+  @@index([employeeId])
+  @@index([payrollYear, payrollMonth])
+  @@index([paymentStatus])
+  @@map("payroll_records")
 }
 
 /// fileUrl stores a private object-storage key. File bytes are never stored in PostgreSQL.
 model Document {
-  id           String       @id @default(uuid())
-  employeeId   String       @map("employee_id")
-  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  documentType DocumentType @map("document_type")
-  fileName     String       @map("file_name")
-  fileUrl      String       @map("file_url")
-  fileSize     Int          @map("file_size")
-  mimeType     String       @map("mime_type")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String       @id @default(uuid())
+  employeeId     String       @map("employee_id")
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  documentType   DocumentType @map("document_type")
+  documentNumber String?      @map("document_number")
+  issueDate      DateTime?    @map("issue_date") @db.Date
+  expiryDate     DateTime?    @map("expiry_date") @db.Date
+  fileName       String       @map("file_name")
+  fileUrl        String       @map("file_url")
+  mimeType       String       @map("mime_type")
+  fileSize       Int          @map("file_size")
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  notifications  Notification[]
 
   @@index([employeeId])
   @@index([documentType])
+  @@index([expiryDate])
   @@map("documents")
+}
+
+/// In-app admin notifications. eventKey prevents duplicate expiry events for the same document/date.
+model Notification {
+  id         String           @id @default(uuid())
+  type       NotificationType
+  title      String
+  message    String
+  employeeId String?          @map("employee_id")
+  employee   Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  documentId String?          @map("document_id")
+  document   Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  eventKey   String           @unique @map("event_key")
+  isRead     Boolean          @default(false) @map("is_read")
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt     DateTime?        @map("read_at") @db.Timestamptz(6)
+
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([employeeId])
+  @@index([documentId])
+  @@index([type])
+  @@map("notifications")
 }
 
 /// A backup may only be marked COMPLETED after the full backup process finishes successfully.

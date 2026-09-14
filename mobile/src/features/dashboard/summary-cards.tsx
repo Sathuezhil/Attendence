@@ -54,6 +54,22 @@ export function SummaryCards({ summary }: { summary: DashboardSummary }) {
       tint: '#dbeafe',
       ink: '#1e40af',
     },
+    {
+      key: 'documentsExpired',
+      label: 'Documents Expired',
+      value: summary.documentsExpired,
+      icon: 'DX',
+      tint: '#fee2e2',
+      ink: '#991b1b',
+    },
+    {
+      key: 'documentsExpiringSoon',
+      label: 'Documents Expiring Soon',
+      value: summary.documentsExpiringSoon,
+      icon: 'DS',
+      tint: '#fef3c7',
+      ink: '#92400e',
+    },
   ];
 
   return (

@@ -136,7 +136,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const requestHeaders = new Headers(headers);
   requestHeaders.set('Accept', 'application/json');
 
-  if (rest.body && !requestHeaders.has('Content-Type')) {
+  if (
+    rest.body &&
+    !(rest.body instanceof FormData) &&
+    !requestHeaders.has('Content-Type')
+  ) {
     requestHeaders.set('Content-Type', 'application/json');
   }
 
@@ -181,4 +185,103 @@ export interface HealthCheckResponse {
 
 export function fetchHealth(): Promise<HealthCheckResponse> {
   return apiRequest<HealthCheckResponse>('/health', { auth: false });
+}
+
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
+  skipRefresh = false,
+): Promise<T> {
+  const accessToken = await secureStorage.getAccessToken();
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${getApiBaseUrl()}${path}`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (accessToken) {
+      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    xhr.onload = async () => {
+      if (xhr.status === 401 && !skipRefresh) {
+        const nextAccessToken = await refreshAccessToken();
+        if (nextAccessToken) {
+          try {
+            resolve(await apiUpload<T>(path, formData, onProgress, true));
+          } catch (error) {
+            reject(error);
+          }
+          return;
+        }
+      }
+
+      let body: unknown = null;
+      try {
+        body = xhr.responseText ? (JSON.parse(xhr.responseText) as unknown) : null;
+      } catch {
+        body = null;
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new ApiError(getErrorMessage(body, xhr.status), xhr.status));
+        return;
+      }
+
+      resolve(body as T);
+    };
+
+    xhr.onerror = () => {
+      reject(new ApiError('Unable to connect to the server. Check your connection.', 0));
+    };
+
+    xhr.send(formData);
+  });
+}
+
+export async function apiRequestBinary(path: string): Promise<{
+  bytes: ArrayBuffer;
+  contentType: string;
+  fileName: string | null;
+}> {
+  const headers = new Headers({ Accept: '*/*' });
+  const accessToken = await secureStorage.getAccessToken();
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, { headers });
+  } catch {
+    throw new ApiError('Unable to connect to the server. Check your connection.', 0);
+  }
+
+  if (response.status === 401) {
+    const nextAccessToken = await refreshAccessToken();
+    if (nextAccessToken) {
+      return apiRequestBinary(path);
+    }
+    throw new ApiError(messageForStatus(401), 401);
+  }
+
+  if (!response.ok) {
+    const body = await parseJson(response);
+    throw new ApiError(getErrorMessage(body, response.status), response.status);
+  }
+
+  const disposition = response.headers.get('content-disposition');
+  const fileNameMatch = disposition?.match(/filename="([^"]+)"/);
+
+  return {
+    bytes: await response.arrayBuffer(),
+    contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+    fileName: fileNameMatch?.[1] ?? null,
+  };
 }

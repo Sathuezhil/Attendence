@@ -4,9 +4,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 const ACTIONS = [
   { id: 'employees', label: 'Employees', href: '/employees' },
   { id: 'attendance', label: 'Attendance', href: '/attendance' },
-  { id: 'leave', label: 'Leave' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'invoices', label: 'Invoices' },
+  { id: 'leave', label: 'Leave', href: '/leave' },
+  { id: 'documents', label: 'Documents', href: '/documents' },
+  { id: 'payroll', label: 'Payroll', href: '/payroll' },
+  { id: 'invoices', label: 'Invoices', href: '/invoices' },
   { id: 'reports', label: 'Reports' },
 ] as const;
 

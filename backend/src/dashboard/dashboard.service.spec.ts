@@ -12,6 +12,14 @@ describe('DashboardService', () => {
     getSummaryCounts: jest.fn(),
   };
 
+  const documentsService = {
+    getExpirySummary: jest.fn(),
+  };
+
+  const documentExpiryService = {
+    getExpiryAlerts: jest.fn(),
+  };
+
   let service: DashboardService;
 
   beforeEach(() => {
@@ -23,7 +31,24 @@ describe('DashboardService', () => {
       halfDayMinutes: 240,
       timezone: 'UTC',
     });
-    service = new DashboardService(prisma as never, attendanceService as never);
+    documentsService.getExpirySummary.mockResolvedValue({
+      expired: 1,
+      expiringSoon: 2,
+      warningDays: 30,
+    });
+    documentExpiryService.getExpiryAlerts.mockResolvedValue({
+      expired: [],
+      expiringUrgent: [],
+      expiringSoon: [],
+      urgentDays: 7,
+      warningDays: 30,
+    });
+    service = new DashboardService(
+      prisma as never,
+      attendanceService as never,
+      documentsService as never,
+      documentExpiryService as never,
+    );
   });
 
   it('returns live employee and attendance counts', async () => {
@@ -45,12 +70,15 @@ describe('DashboardService', () => {
       absentToday: 1,
       onLeaveToday: 1,
       lateToday: 0,
+      documentsExpired: 1,
+      documentsExpiringSoon: 2,
     });
 
     expect(prisma.employee.count).toHaveBeenCalledWith({
       where: { deletedAt: null },
     });
     expect(attendanceService.getSummaryCounts).toHaveBeenCalledTimes(1);
+    expect(documentsService.getExpirySummary).toHaveBeenCalledTimes(1);
   });
 
   it('returns an empty activity list when no audit rows exist', async () => {

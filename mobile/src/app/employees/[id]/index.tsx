@@ -124,8 +124,24 @@ export default function EmployeeDetailsScreen() {
         >
           <Text style={styles.buttonText}>Attendance</Text>
         </Pressable>
-        <DisabledAction label="Leave" />
-        <DisabledAction label="Documents" />
+        <Pressable
+          onPress={() => router.push(`/leave?employeeId=${employee.id}` as Href)}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>Leave</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push(`/documents?employeeId=${employee.id}` as Href)}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>Documents</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push(`/payroll?employeeId=${employee.id}` as Href)}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>Payroll</Text>
+        </Pressable>
         <Pressable
           onPress={confirmDeactivate}
           disabled={deactivate.isPending}
@@ -161,15 +177,6 @@ function Row({ label, value }: { label: string; value: string | null }) {
     <View style={styles.row}>
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.value}>{value || 'Not provided'}</Text>
-    </View>
-  );
-}
-
-function DisabledAction({ label }: { label: string }) {
-  return (
-    <View style={styles.disabledButton}>
-      <Text style={styles.disabledTitle}>{label}</Text>
-      <Text style={styles.disabledBadge}>Coming Soon</Text>
     </View>
   );
 }
@@ -253,29 +260,6 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#ffffff',
-    fontWeight: '700',
-  },
-  disabledButton: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    minHeight: 48,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  disabledTitle: {
-    fontWeight: '700',
-    color: '#111827',
-  },
-  disabledBadge: {
-    color: '#92400e',
-    backgroundColor: '#fef3c7',
-    overflow: 'hidden',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 11,
     fontWeight: '700',
   },
   dangerButton: {

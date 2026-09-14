@@ -170,7 +170,7 @@ curl -X DELETE http://localhost:3000/employees/<id> \
 
 `DELETE /employees/:id` deactivates the employee (`employmentStatus=INACTIVE` and `deletedAt`) so attendance history is not destroyed. Soft-deleted employees are hidden from normal lists.
 
-In the mobile app: Dashboard → Employees → Add / Details / Edit. Attendance is available from the dashboard and from Employee Details. Leave and Documents remain Coming Soon.
+In the mobile app: Dashboard → Employees → Add / Details / Edit. Attendance, Leave, and Documents are available from the dashboard and from Employee Details.
 
 ## 9. Attendance
 
@@ -202,6 +202,105 @@ curl "http://localhost:3000/attendance?employeeId=<employee-id>&startDate=2026-0
 
 `DELETE /attendance/:id` is rejected so historical attendance is not destroyed.
 
+## 10. Leave
+
+Boss/admin manages all leave. Employees do not have accounts. `totalDays` is calculated on the backend. Pending and approved leave cannot overlap for the same employee. Approved leave is shown as `ON_LEAVE` on the daily attendance board without creating one attendance row per leave day.
+
+```bash
+curl -X POST http://localhost:3000/leave \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d "{\"employeeId\":\"<employee-id>\",\"leaveType\":\"ANNUAL\",\"startDate\":\"2026-10-01\",\"endDate\":\"2026-10-05\"}"
+
+curl "http://localhost:3000/leave?status=PENDING" -H "Authorization: Bearer <accessToken>"
+
+curl -X POST http://localhost:3000/leave/<id>/approve \
+  -H "Authorization: Bearer <accessToken>"
+
+curl -X POST http://localhost:3000/leave/<id>/reject \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d "{\"rejectionReason\":\"Coverage is not available\"}"
+```
+
+## 11. Employee documents
+
+Boss/admin manages employee documents. Employees do not have accounts. File bytes are stored in private local storage (`STORAGE_LOCAL_DIR`, default `storage/`). PostgreSQL stores metadata only. Document files are streamed through JWT-protected `GET /documents/:id/file` and are never given public URLs.
+
+Expiry status is calculated dynamically as `VALID`, `EXPIRING_SOON`, or `EXPIRED` using a 30-day warning window from `DOCUMENT_EXPIRY_WARNING_DAYS` or the `DOCUMENT_EXPIRY_WARNING_DAYS` app setting.
+
+```bash
+curl -X POST http://localhost:3000/employees/<employee-id>/documents ^
+  -H "Authorization: Bearer <accessToken>" ^
+  -F "documentType=PASSPORT" ^
+  -F "documentNumber=A1234567" ^
+  -F "issueDate=2024-01-15" ^
+  -F "expiryDate=2027-01-15" ^
+  -F "file=@passport.pdf;type=application/pdf"
+
+curl "http://localhost:3000/employees/<employee-id>/documents" -H "Authorization: Bearer <accessToken>"
+
+curl "http://localhost:3000/documents?expired=true" -H "Authorization: Bearer <accessToken>"
+
+curl http://localhost:3000/documents/<id> -H "Authorization: Bearer <accessToken>"
+
+curl http://localhost:3000/documents/<id>/file -H "Authorization: Bearer <accessToken>" --output document.pdf
+
+curl -X PATCH http://localhost:3000/documents/<id> ^
+  -H "Authorization: Bearer <accessToken>" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"notes\":\"Renewed\"}"
+
+curl -X DELETE http://localhost:3000/documents/<id> -H "Authorization: Bearer <accessToken>"
+```
+
+Allowed uploads: PDF, JPG, JPEG, PNG. Size is limited by `MAX_UPLOAD_SIZE_BYTES` (default 10MB). List views mask sensitive document numbers.
+
+Dashboard `GET /dashboard/summary` includes live `documentsExpired` and `documentsExpiringSoon` counts.
+
+## 12. Document expiry notifications
+
+In-app notifications are created from real document expiry dates. The daily job uses `DOCUMENT_EXPIRY_CRON` (default `0 7 * * *` UTC) and also runs once when the backend starts if `DOCUMENT_EXPIRY_CHECK_ON_BOOT=true`. Duplicate events are blocked by a unique `eventKey`.
+
+Thresholds live in one place (`document-expiry.ts` + env/app settings):
+
+- 30 days: `DOCUMENT_EXPIRING`
+- 7 days: urgent `DOCUMENT_EXPIRING`
+- on or after expiry: `DOCUMENT_EXPIRED`
+
+```bash
+curl "http://localhost:3000/notifications" -H "Authorization: Bearer <accessToken>"
+
+curl "http://localhost:3000/notifications/unread-count" -H "Authorization: Bearer <accessToken>"
+
+curl -X PATCH http://localhost:3000/notifications/<id>/read -H "Authorization: Bearer <accessToken>"
+
+curl -X PATCH http://localhost:3000/notifications/read-all -H "Authorization: Bearer <accessToken>"
+
+curl "http://localhost:3000/dashboard/expiry-alerts" -H "Authorization: Bearer <accessToken>"
+```
+
+Leave-approved, leave-rejected, and attendance-alert types exist for later modules. Push, SMS, WhatsApp, and email are not implemented.
+
+## 13. Payroll
+
+Boss/admin creates payroll from real employees and approved unpaid leave. Gross and net salary are calculated on the backend. `DELETE /payroll/:id` sets `CANCELLED` and does not hard-delete history.
+
+```bash
+curl -X POST http://localhost:3000/payroll \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d "{\"employeeId\":\"<employee-id>\",\"payrollMonth\":9,\"payrollYear\":2026,\"basicSalary\":2600,\"allowances\":200,\"overtimeAmount\":100,\"deductions\":50}"
+
+curl "http://localhost:3000/payroll?year=2026&month=9" -H "Authorization: Bearer <accessToken>"
+
+curl "http://localhost:3000/employees/<employee-id>/payroll" -H "Authorization: Bearer <accessToken>"
+
+curl -X POST http://localhost:3000/payroll/<id>/mark-paid -H "Authorization: Bearer <accessToken>"
+```
+
+Unpaid leave deduction uses `basicSalary / PAYROLL_WORKING_DAYS_PER_MONTH` (default 26) times approved unpaid days in that month.
+
 ### Connecting from a physical device
 
 1. Keep the backend listening on `0.0.0.0:3000` (already configured).
@@ -214,11 +313,11 @@ curl "http://localhost:3000/attendance?employeeId=<employee-id>&startDate=2026-0
 
 - Admin-only. JWT access/refresh tokens are issued on login. 2FA fields remain unused for now.
 - Employee records are archived with `deletedAt` / `ARCHIVED` instead of hard delete.
-- Passport, visa, document, and invoice files will be stored in private object storage. PostgreSQL stores storage keys only.
+- Passport, visa, document, and invoice files are stored in private object storage. PostgreSQL stores storage keys only. The current document module uses local disk under `STORAGE_LOCAL_DIR`.
 - Attendance defaults to `MANUAL` and already has `source` values for future QR/GPS capture.
 - Expiry reminder periods default to 90, 60, 30, and 7 days via `AppSetting`.
 - Backups are tracked in `BackupLog`. A backup must not be marked `COMPLETED` unless the process actually finishes.
-- Feature modules exist under `backend/src`. Health, authentication, the boss dashboard, employee management, and attendance are implemented. Employees do not have login accounts.
+- Feature modules exist under `backend/src`. Health, authentication, the boss dashboard, employee management, attendance, leave, documents, in-app expiry notifications, and payroll are implemented. Employees do not have login accounts.
 
 ## Useful commands
 

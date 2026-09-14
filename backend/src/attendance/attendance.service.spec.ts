@@ -47,6 +47,7 @@ describe('AttendanceService', () => {
       count: jest.fn(),
       groupBy: jest.fn(),
     },
+    leave: { findMany: jest.fn() },
   };
 
   let service: AttendanceService;
@@ -54,14 +55,24 @@ describe('AttendanceService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.appSetting.findUnique.mockResolvedValue(null);
+    prisma.leave.findMany.mockResolvedValue([]);
     service = new AttendanceService(prisma as never);
   });
 
   it('summarizes today without creating absent rows', async () => {
     prisma.employee.count.mockResolvedValue(5);
-    prisma.attendance.groupBy.mockResolvedValue([
-      { status: AttendanceStatus.PRESENT, _count: { _all: 2 } },
-      { status: AttendanceStatus.LATE, _count: { _all: 1 } },
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        employeeId: 'a',
+        status: AttendanceStatus.PRESENT,
+        checkIn: new Date(),
+      },
+      {
+        employeeId: 'b',
+        status: AttendanceStatus.PRESENT,
+        checkIn: new Date(),
+      },
+      { employeeId: 'c', status: AttendanceStatus.LATE, checkIn: new Date() },
     ]);
 
     const summary = await service.getSummaryCounts(
@@ -72,6 +83,27 @@ describe('AttendanceService', () => {
     expect(summary.present).toBe(2);
     expect(summary.late).toBe(1);
     expect(summary.absent).toBe(2);
+    expect(prisma.attendance.create).not.toHaveBeenCalled();
+  });
+
+  it('counts approved leave as on leave without creating attendance rows', async () => {
+    prisma.employee.count.mockResolvedValue(5);
+    prisma.attendance.findMany.mockResolvedValue([
+      {
+        employeeId: 'a',
+        status: AttendanceStatus.PRESENT,
+        checkIn: new Date(),
+      },
+    ]);
+    prisma.leave.findMany.mockResolvedValue([{ employeeId: 'leave-1' }]);
+
+    const summary = await service.getSummaryCounts(
+      new Date('2026-09-12T00:00:00.000Z'),
+    );
+
+    expect(summary.onLeave).toBe(1);
+    expect(summary.present).toBe(1);
+    expect(summary.absent).toBe(3);
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
 

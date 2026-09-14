@@ -4,6 +4,8 @@ import { PublicAdmin } from '@/features/auth/types';
 
 interface DashboardHeaderProps {
   user: PublicAdmin;
+  unreadCount: number;
+  onOpenNotifications: () => void;
   onLogout: () => void;
 }
 
@@ -28,8 +30,14 @@ function initials(name: string): string {
     .join('');
 }
 
-export function DashboardHeader({ user, onLogout }: DashboardHeaderProps) {
+export function DashboardHeader({
+  user,
+  unreadCount,
+  onOpenNotifications,
+  onLogout,
+}: DashboardHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const badge = unreadCount > 99 ? '99+' : String(unreadCount);
 
   return (
     <View style={styles.header}>
@@ -39,7 +47,20 @@ export function DashboardHeader({ user, onLogout }: DashboardHeaderProps) {
         <Text style={styles.date}>{formatToday()}</Text>
       </View>
 
-      <View>
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open notifications"
+          onPress={onOpenNotifications}
+          style={styles.bell}
+        >
+          <Text style={styles.bellText}>N</Text>
+          {unreadCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badge}</Text>
+            </View>
+          ) : null}
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open profile menu"
@@ -97,6 +118,41 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 14,
     color: '#4b5563',
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  bell: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellText: {
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#b91c1c',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   avatar: {
     width: 44,

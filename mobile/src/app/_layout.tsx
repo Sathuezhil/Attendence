@@ -20,6 +20,11 @@ export default function RootLayout() {
           <Stack.Screen name="dashboard" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="employees" options={{ headerShown: false }} />
           <Stack.Screen name="attendance" options={{ headerShown: false }} />
+          <Stack.Screen name="leave" options={{ headerShown: false }} />
+          <Stack.Screen name="documents" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
+          <Stack.Screen name="payroll" options={{ headerShown: false }} />
+          <Stack.Screen name="invoices" options={{ headerShown: false }} />
         </Stack>
       </AuthProvider>
     </QueryClientProvider>

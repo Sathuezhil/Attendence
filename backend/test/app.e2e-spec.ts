@@ -31,9 +31,14 @@ describe('Health (e2e)', () => {
       .get('/health')
       .expect(200)
       .expect((response) => {
-        expect(response.body.status).toBe('ok');
-        expect(response.body.service).toBe('employee-management-api');
-        expect(['connected', 'disconnected']).toContain(response.body.database);
+        const body = response.body as {
+          status: string;
+          service: string;
+          database: string;
+        };
+        expect(body.status).toBe('ok');
+        expect(body.service).toBe('employee-management-api');
+        expect(['connected', 'disconnected']).toContain(body.database);
       });
   });
 

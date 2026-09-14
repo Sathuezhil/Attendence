@@ -5,4 +5,6 @@ export class DashboardSummaryDto {
   presentToday!: number;
   absentToday!: number;
   lateToday!: number;
+  documentsExpired!: number;
+  documentsExpiringSoon!: number;
 }

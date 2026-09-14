@@ -12,6 +12,7 @@ export interface UploadObjectInput {
 
 export interface ObjectStorage {
   upload(input: UploadObjectInput): Promise<StoredObject>;
-  getSignedDownloadUrl(key: string, expiresInSeconds: number): Promise<string>;
+  getSignedDownloadUrl(key: string, expiresInSeconds?: number): Promise<string>;
+  read(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
 }

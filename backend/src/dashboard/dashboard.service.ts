@@ -5,6 +5,9 @@ import {
 } from '@nestjs/common';
 import { AttendanceService } from '../attendance/attendance.service';
 import { calendarDate } from '../attendance/working-hours';
+import { DocumentsService } from '../documents/documents.service';
+import { DocumentExpiryService } from '../notifications/document-expiry.service';
+import { ExpiryAlertsResponse } from '../notifications/notifications.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { DashboardSummaryDto } from './dto/dashboard-summary.dto';
 import {
@@ -19,6 +22,8 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly attendanceService: AttendanceService,
+    private readonly documentsService: DocumentsService,
+    private readonly documentExpiryService: DocumentExpiryService,
   ) {}
 
   async getSummary(): Promise<DashboardSummaryDto> {
@@ -26,11 +31,12 @@ export class DashboardService {
       const hours = await this.attendanceService.getWorkingHours();
       const today = calendarDate(hours.timezone);
 
-      const [employees, attendance] = await Promise.all([
+      const [employees, attendance, documents] = await Promise.all([
         this.prisma.employee.count({
           where: { deletedAt: null },
         }),
         this.attendanceService.getSummaryCounts(today),
+        this.documentsService.getExpirySummary(),
       ]);
 
       return {
@@ -40,10 +46,21 @@ export class DashboardService {
         presentToday: attendance.present,
         absentToday: attendance.absent,
         lateToday: attendance.late,
+        documentsExpired: documents.expired,
+        documentsExpiringSoon: documents.expiringSoon,
       };
     } catch (error) {
       this.logger.error('Failed to load dashboard summary', error);
       throw new ServiceUnavailableException('Unable to load dashboard summary');
+    }
+  }
+
+  async getExpiryAlerts(): Promise<ExpiryAlertsResponse> {
+    try {
+      return await this.documentExpiryService.getExpiryAlerts();
+    } catch (error) {
+      this.logger.error('Failed to load expiry alerts', error);
+      throw new ServiceUnavailableException('Unable to load expiry alerts');
     }
   }
 

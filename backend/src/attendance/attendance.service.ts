@@ -12,6 +12,7 @@ import {
   AttendanceStatus,
   Employee,
   EmployeeStatus,
+  LeaveRequestStatus,
   Prisma,
 } from '@prisma/client';
 import { parseOptionalDate } from '../common/utils/parse-date';
@@ -91,26 +92,38 @@ export class AttendanceService {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
 
-    const records = await this.prisma.attendance.findMany({
-      where: {
-        date,
-        employeeId: { in: employees.map((employee) => employee.id) },
-      },
-      include: { employee: { select: employeeSelect } },
-    });
+    const [records, leaveIds] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: {
+          date,
+          employeeId: { in: employees.map((employee) => employee.id) },
+        },
+        include: { employee: { select: employeeSelect } },
+      }),
+      this.getApprovedLeaveEmployeeIds(date),
+    ]);
 
     const byEmployee = new Map(
       records.map((record) => [record.employeeId, record]),
     );
     const attendanceDate = toDateOnly(date);
 
-    let rows = employees.map((employee) =>
-      toDayRow(
+    let rows = employees.map((employee) => {
+      const row = toDayRow(
         toEmployeeSummary(employee),
         attendanceDate,
         byEmployee.get(employee.id),
-      ),
-    );
+      );
+
+      if (leaveIds.has(employee.id) && !row.checkIn) {
+        return {
+          ...row,
+          status: AttendanceStatus.ON_LEAVE,
+        };
+      }
+
+      return row;
+    });
 
     if (search) {
       rows = rows.filter((row) => {
@@ -146,60 +159,60 @@ export class AttendanceService {
   }
 
   async getSummaryCounts(date: Date): Promise<AttendanceSummary> {
-    const [totalEmployees, grouped] = await Promise.all([
+    const [totalEmployees, attendanceRows, leaveIds] = await Promise.all([
       this.prisma.employee.count({
         where: { deletedAt: null, status: EmployeeStatus.ACTIVE },
       }),
-      this.prisma.attendance.groupBy({
-        by: ['status'],
+      this.prisma.attendance.findMany({
         where: {
           date,
           employee: { deletedAt: null, status: EmployeeStatus.ACTIVE },
         },
-        _count: { _all: true },
+        select: { employeeId: true, status: true, checkIn: true },
       }),
+      this.getApprovedLeaveEmployeeIds(date),
     ]);
 
     const counts = {
       present: 0,
       late: 0,
       halfDay: 0,
-      onLeave: 0,
       holiday: 0,
       storedAbsent: 0,
     };
 
-    for (const row of grouped) {
-      const count = row._count._all;
+    for (const row of attendanceRows) {
+      if (leaveIds.has(row.employeeId) && !row.checkIn) {
+        continue;
+      }
+
       switch (toPublicStatus(row.status)) {
         case AttendanceStatus.PRESENT:
-          counts.present += count;
+          counts.present += 1;
           break;
         case AttendanceStatus.LATE:
-          counts.late += count;
+          counts.late += 1;
           break;
         case AttendanceStatus.HALF_DAY:
-          counts.halfDay += count;
-          break;
-        case AttendanceStatus.ON_LEAVE:
-          counts.onLeave += count;
+          counts.halfDay += 1;
           break;
         case AttendanceStatus.HOLIDAY:
-          counts.holiday += count;
+          counts.holiday += 1;
           break;
         case AttendanceStatus.ABSENT:
-          counts.storedAbsent += count;
+          counts.storedAbsent += 1;
           break;
         default:
           break;
       }
     }
 
+    const onLeave = leaveIds.size;
     const accounted =
       counts.present +
       counts.late +
       counts.halfDay +
-      counts.onLeave +
+      onLeave +
       counts.holiday +
       counts.storedAbsent;
 
@@ -209,9 +222,23 @@ export class AttendanceService {
       present: counts.present,
       late: counts.late,
       halfDay: counts.halfDay,
-      onLeave: counts.onLeave,
-      absent: Math.max(0, totalEmployees - accounted) + counts.storedAbsent,
+      onLeave,
+      absent: Math.max(0, totalEmployees - accounted),
     };
+  }
+
+  private async getApprovedLeaveEmployeeIds(date: Date): Promise<Set<string>> {
+    const rows = await this.prisma.leave.findMany({
+      where: {
+        status: LeaveRequestStatus.APPROVED,
+        startDate: { lte: date },
+        endDate: { gte: date },
+        employee: { deletedAt: null, status: EmployeeStatus.ACTIVE },
+      },
+      select: { employeeId: true },
+    });
+
+    return new Set(rows.map((row) => row.employeeId));
   }
 
   async findAll(query: QueryAttendanceDto): Promise<PaginatedAttendance> {
