@@ -17,6 +17,7 @@ import {
 } from './attendance.types';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
+import { MarkDayDto } from './dto/mark-day.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { QueryTodayAttendanceDto } from './dto/query-today-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
@@ -45,6 +46,11 @@ export class AttendanceController {
   @Post('check-in')
   checkIn(@Body() dto: CheckInDto): Promise<AttendanceResponse> {
     return this.attendanceService.checkIn(dto);
+  }
+
+  @Post('mark-day')
+  markDay(@Body() dto: MarkDayDto): Promise<AttendanceResponse> {
+    return this.attendanceService.markDay(dto);
   }
 
   @Post(':id/check-out')

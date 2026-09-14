@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { LoginThrottleService } from './login-throttle.service';
 import { AuthService } from './auth.service';
 
 jest.mock('@nestjs/jwt', () => ({
@@ -21,6 +22,9 @@ describe('AuthService', () => {
     createAdmin: jest.fn(),
     findByEmail: jest.fn(),
     findPublicById: jest.fn(),
+    findById: jest.fn(),
+    updateProfile: jest.fn(),
+    updatePasswordHash: jest.fn(),
     toPublicAdmin: jest.fn(),
   };
   const prisma = {
@@ -70,6 +74,7 @@ describe('AuthService', () => {
       prisma as never,
       jwtService as never,
       configService as never,
+      new LoginThrottleService(),
     );
   });
 
@@ -150,5 +155,68 @@ describe('AuthService', () => {
     expect(result.user.email).toBe('boss@example.com');
     expect(result.accessToken).toBe('access-token');
     expect(JSON.stringify(result)).not.toContain(passwordHash);
+  });
+
+  it('updates the admin name and email without exposing password data', async () => {
+    usersService.updateProfile.mockResolvedValue({
+      ...publicAdmin,
+      name: 'Updated Boss',
+      email: 'updated@example.com',
+    });
+
+    const result = await service.updateProfile('admin-1', {
+      name: 'Updated Boss',
+      email: 'updated@example.com',
+    });
+
+    expect(result.name).toBe('Updated Boss');
+    expect(JSON.stringify(result)).not.toContain('password');
+  });
+
+  it('changes the password, hashes it, and revokes refresh tokens', async () => {
+    const passwordHash = await hash('CurrentPass1', 4);
+    usersService.findById.mockResolvedValue({
+      ...publicAdmin,
+      passwordHash,
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+    });
+    usersService.updatePasswordHash.mockResolvedValue(undefined);
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.changePassword('admin-1', {
+        currentPassword: 'CurrentPass1',
+        newPassword: 'NewPassword12',
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(usersService.updatePasswordHash).toHaveBeenCalledWith(
+      'admin-1',
+      expect.any(String),
+    );
+    const nextHash = usersService.updatePasswordHash.mock
+      .calls[0]?.[1] as string;
+    expect(nextHash).not.toBe('NewPassword12');
+    expect(nextHash).not.toBe(passwordHash);
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalled();
+  });
+
+  it('rejects change-password when the current password is wrong', async () => {
+    const passwordHash = await hash('CurrentPass1', 4);
+    usersService.findById.mockResolvedValue({
+      ...publicAdmin,
+      passwordHash,
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+    });
+
+    await expect(
+      service.changePassword('admin-1', {
+        currentPassword: 'WrongPass12',
+        newPassword: 'NewPassword12',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(usersService.updatePasswordHash).not.toHaveBeenCalled();
   });
 });

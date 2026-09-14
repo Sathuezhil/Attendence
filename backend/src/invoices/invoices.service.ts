@@ -9,6 +9,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { toDateOnly } from '../attendance/working-hours';
 import { parseOptionalDate } from '../common/utils/parse-date';
 import { AppConfiguration } from '../config/configuration';
+import { NotificationInboxService } from '../notifications/notification-inbox.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { QueryInvoicesDto } from './dto/query-invoices.dto';
@@ -41,6 +42,7 @@ export class InvoicesService {
     private readonly prisma: PrismaService,
     private readonly calculation: InvoiceCalculationService,
     private readonly config: ConfigService<AppConfiguration, true>,
+    private readonly inbox?: NotificationInboxService,
   ) {}
 
   preview(dto: CreateInvoiceDto): InvoicePreview {
@@ -268,7 +270,7 @@ export class InvoicesService {
   }
 
   async markOverdueInvoices(): Promise<number> {
-    const result = await this.prisma.invoice.updateMany({
+    const due = await this.prisma.invoice.findMany({
       where: {
         status: {
           in: OPEN_INVOICE_STATUSES.filter(
@@ -277,10 +279,32 @@ export class InvoicesService {
         },
         dueDate: { lt: todayUtcDate() },
       },
+      select: { id: true, invoiceNumber: true, customerName: true },
+    });
+    if (due.length === 0) {
+      return 0;
+    }
+
+    await this.prisma.invoice.updateMany({
+      where: { id: { in: due.map((invoice) => invoice.id) } },
       data: { status: InvoiceStatus.OVERDUE },
     });
 
-    return result.count;
+    const day = toDateOnly(todayUtcDate());
+    if (this.inbox) {
+      const inbox = this.inbox;
+      const tasks: Promise<void>[] = due.map((invoice) =>
+        inbox.notify({
+          type: 'INVOICE_OVERDUE',
+          title: 'Invoice overdue',
+          message: `${invoice.invoiceNumber} for ${invoice.customerName} is overdue.`,
+          eventKey: `invoice-overdue:${invoice.id}:${day}`,
+        }),
+      );
+      await Promise.all(tasks);
+    }
+
+    return due.length;
   }
 
   private currentInvoiceExtras(invoice: InvoiceWithItems): {
@@ -317,14 +341,26 @@ export class InvoicesService {
   private buildWhere(query: QueryInvoicesDto): Prisma.InvoiceWhereInput {
     const fromDate = parseOptionalDate(query.fromDate, 'fromDate');
     const toDate = parseOptionalDate(query.toDate, 'toDate');
+    const dueFrom = parseOptionalDate(query.dueFrom, 'dueFrom');
+    const dueTo = parseOptionalDate(query.dueTo, 'dueTo');
+    if (dueFrom && dueTo && dueTo.getTime() < dueFrom.getTime()) {
+      throw new BadRequestException('dueTo cannot be before dueFrom');
+    }
     const search = query.search?.trim();
     const customer = query.customer?.trim();
 
     return {
       status: query.status,
+      invoiceNumber: query.invoiceNumber
+        ? { contains: query.invoiceNumber.trim(), mode: 'insensitive' }
+        : undefined,
       invoiceDate: {
         gte: fromDate ?? undefined,
         lte: toDate ?? undefined,
+      },
+      dueDate: {
+        gte: dueFrom ?? undefined,
+        lte: dueTo ?? undefined,
       },
       AND: [
         customer

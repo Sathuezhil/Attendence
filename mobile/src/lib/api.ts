@@ -4,18 +4,41 @@ import { AuthResponse } from '@/features/auth/types';
 import { secureStorage } from '@/lib/secure-storage';
 
 function inferDevHost(): string | null {
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (!hostUri) {
-    return null;
+  const candidates = [
+    Constants.expoConfig?.hostUri,
+    Constants.expoGoConfig?.debuggerHost,
+    Constants.linkingUri,
+  ];
+
+  for (const raw of candidates) {
+    if (!raw) {
+      continue;
+    }
+
+    const withoutProtocol = raw.replace(/^[a-z]+:\/\//i, '');
+    const hostPort = withoutProtocol.split('/')[0] ?? '';
+    const host = hostPort
+      .replace(/^\[/, '')
+      .replace(/\]:\d+$/, '')
+      .replace(/\]$/, '')
+      .split(':')[0];
+
+    if (host && host !== 'undefined') {
+      return host;
+    }
   }
 
-  return hostUri.split(':')[0] ?? null;
+  return null;
 }
 
 export function getApiBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
   if (configured) {
     return configured;
+  }
+
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) {
+    throw new Error('EXPO_PUBLIC_API_URL must be set in production builds');
   }
 
   const host = inferDevHost();
@@ -28,6 +51,23 @@ export function getApiBaseUrl(): string {
   }
 
   return 'http://localhost:3000';
+}
+
+type SessionExpiredListener = () => void;
+let sessionExpiredListener: SessionExpiredListener | null = null;
+let sessionExpiredNotified = false;
+
+export function setSessionExpiredListener(listener: SessionExpiredListener | null): void {
+  sessionExpiredListener = listener;
+  sessionExpiredNotified = false;
+}
+
+function notifySessionExpired(): void {
+  if (sessionExpiredNotified) {
+    return;
+  }
+  sessionExpiredNotified = true;
+  sessionExpiredListener?.();
 }
 
 export class ApiError extends Error {
@@ -112,6 +152,7 @@ async function refreshAccessToken(): Promise<string | null> {
     const body = await parseJson(response);
     if (!response.ok) {
       await secureStorage.clearTokens();
+      notifySessionExpired();
       return null;
     }
 
@@ -166,6 +207,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     if (nextAccessToken) {
       return apiRequest<T>(path, { ...options, skipRefresh: true });
     }
+    notifySessionExpired();
   }
 
   const body = await parseJson(response);
@@ -220,6 +262,7 @@ export async function apiUpload<T>(
           }
           return;
         }
+        notifySessionExpired();
       }
 
       let body: unknown = null;
@@ -268,6 +311,7 @@ export async function apiRequestBinary(path: string): Promise<{
     if (nextAccessToken) {
       return apiRequestBinary(path);
     }
+    notifySessionExpired();
     throw new ApiError(messageForStatus(401), 401);
   }
 

@@ -1,5 +1,5 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,18 +7,27 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { DateRangePicker } from '@/features/filters/date-range-picker';
+import { FilterButton } from '@/features/filters/filter-button';
+import { FilterModal } from '@/features/filters/filter-modal';
+import { PaginationBar } from '@/features/filters/pagination-bar';
+import { SearchBar } from '@/features/filters/search-bar';
+import { StatusFilter } from '@/features/filters/status-filter';
+import { useDebouncedValue } from '@/features/filters/use-debounced-value';
+import { usePagedFilters } from '@/features/filters/use-paged-filters';
 import { fetchLeaves } from '@/features/leave/api';
 import { labelOf, leaveStatuses, leaveTypes, statusColor } from '@/features/leave/format';
 import { LeaveRecord, LeaveStatus, LeaveType } from '@/features/leave/types';
 import { ApiError } from '@/lib/api';
+import { FabButton, useSafeBottomOffset } from '@/ui/fab-button';
 
 export default function LeaveListScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
+  const listBottom = useSafeBottomOffset(96);
   const params = useLocalSearchParams<{ employeeId?: string | string[] }>();
   const employeeId = Array.isArray(params.employeeId)
     ? params.employeeId[0]
@@ -29,25 +38,37 @@ export default function LeaveListScreen() {
   const [leaveType, setLeaveType] = useState<LeaveType | undefined>();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search);
+  const filterKey = JSON.stringify({
+    employeeId,
+    search: debouncedSearch,
+    status,
+    leaveType,
+    startDate,
+    endDate,
+  });
+  const { page, setPage } = usePagedFilters(filterKey);
+  const filterCount = [status, leaveType, startDate, endDate].filter(Boolean).length;
 
   const query = useQuery({
-    queryKey: ['leave', { employeeId, search, status, leaveType, startDate, endDate }],
+    queryKey: ['leave', { employeeId, search: debouncedSearch, status, leaveType, startDate, endDate, page }],
     enabled: isReady && isAuthenticated,
     queryFn: () =>
       fetchLeaves({
         employeeId,
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         status,
         leaveType,
         startDate: startDate.trim() || undefined,
         endDate: endDate.trim() || undefined,
-        limit: 50,
+        page,
+        limit: 20,
       }),
   });
 
   const records = query.data?.data ?? [];
-  const statusFilters = useMemo(() => [undefined, ...leaveStatuses], []);
-  const typeFilters = useMemo(() => [undefined, ...leaveTypes], []);
+  const totalPages = query.data?.totalPages ?? 0;
 
   if (!isReady || !isAuthenticated) {
     return (
@@ -62,62 +83,22 @@ export default function LeaveListScreen() {
       <FlatList
         data={records}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: listBottom }]}
         refreshControl={
           <RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />
         }
         ListHeaderComponent={
           <View style={styles.filters}>
             {employeeId ? <Text style={styles.scope}>Showing one employee</Text> : null}
-            <TextInput
-              onChangeText={setSearch}
-              placeholder="Search employee"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={search}
+            <SearchBar onChange={setSearch} placeholder="Search employee" value={search} />
+            <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
+            <StatusFilter
+              allLabel="All status"
+              labelOf={labelOf}
+              onChange={setStatus}
+              options={leaveStatuses}
+              value={status}
             />
-            <View style={styles.row}>
-              <TextInput
-                onChangeText={setStartDate}
-                placeholder="Start YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={startDate}
-              />
-              <TextInput
-                onChangeText={setEndDate}
-                placeholder="End YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={endDate}
-              />
-            </View>
-            <View style={styles.chips}>
-              {statusFilters.map((option) => (
-                <Pressable
-                  key={option ?? 'ALL_STATUS'}
-                  onPress={() => setStatus(option)}
-                  style={[styles.chip, status === option ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, status === option ? styles.chipTextActive : null]}>
-                    {option ? labelOf(option) : 'All status'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.chips}>
-              {typeFilters.map((option) => (
-                <Pressable
-                  key={option ?? 'ALL_TYPE'}
-                  onPress={() => setLeaveType(option)}
-                  style={[styles.chip, leaveType === option ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, leaveType === option ? styles.chipTextActive : null]}>
-                    {option ? labelOf(option) : 'All types'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
           </View>
         }
         ListEmptyComponent={
@@ -133,11 +114,37 @@ export default function LeaveListScreen() {
             <Text style={styles.empty}>No leave records found</Text>
           )
         }
+        ListFooterComponent={<PaginationBar onPage={setPage} page={page} totalPages={totalPages} />}
         renderItem={({ item }) => <LeaveRow record={item} />}
       />
-      <Pressable onPress={() => router.push('/leave/new' as Href)} style={styles.fab}>
-        <Text style={styles.fabText}>Add Leave</Text>
-      </Pressable>
+      <FilterModal
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setStatus(undefined);
+          setLeaveType(undefined);
+          setStartDate('');
+          setEndDate('');
+        }}
+        onClose={() => setFiltersOpen(false)}
+        visible={filtersOpen}
+      >
+        <StatusFilter
+          allLabel="All types"
+          labelOf={labelOf}
+          onChange={setLeaveType}
+          options={leaveTypes}
+          value={leaveType}
+        />
+        <DateRangePicker
+          from={startDate}
+          fromPlaceholder="Start"
+          onChangeFrom={setStartDate}
+          onChangeTo={setEndDate}
+          to={endDate}
+          toPlaceholder="End"
+        />
+      </FilterModal>
+      <FabButton label="Add Leave" onPress={() => router.push('/leave/new' as Href)} />
     </View>
   );
 }
@@ -181,44 +188,6 @@ const styles = StyleSheet.create({
     color: '#1e40af',
     fontWeight: '700',
   },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  flex: {
-    flex: 1,
-  },
-  search: {
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    color: '#111827',
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#e5e7eb',
-  },
-  chipActive: {
-    backgroundColor: '#111827',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  chipTextActive: {
-    color: '#ffffff',
-  },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -257,19 +226,5 @@ const styles = StyleSheet.create({
   error: {
     color: '#991b1b',
     textAlign: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 20,
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    minHeight: 48,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  fabText: {
-    color: '#ffffff',
-    fontWeight: '700',
   },
 });

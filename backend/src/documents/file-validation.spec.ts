@@ -23,10 +23,11 @@ describe('file validation', () => {
     expect(detectFileType(png, 'id.png', ALLOWED).mimeType).toBe('image/png');
   });
 
-  it('rejects an unsupported file', () => {
-    expect(() =>
-      detectFileType(Buffer.from('hello'), 'notes.txt', ALLOWED),
-    ).toThrow(BadRequestException);
+  it('rejects a Windows executable', () => {
+    const exe = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03]);
+    expect(() => detectFileType(exe, 'setup.exe', ALLOWED)).toThrow(
+      BadRequestException,
+    );
   });
 
   it('rejects an oversized file', () => {

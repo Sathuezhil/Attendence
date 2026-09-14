@@ -1,5 +1,6 @@
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { assertSafeStorageKey } from './safe-storage-key';
 import {
   ObjectStorage,
   StoredObject,
@@ -7,6 +8,8 @@ import {
 } from './object-storage';
 
 export class LocalObjectStorage implements ObjectStorage {
+  readonly driver = 'local' as const;
+
   constructor(private readonly rootDir: string) {}
 
   async upload(input: UploadObjectInput): Promise<StoredObject> {
@@ -40,7 +43,7 @@ export class LocalObjectStorage implements ObjectStorage {
   }
 
   private resolveKey(key: string): string {
-    const safeKey = key.replaceAll('..', '');
+    const safeKey = assertSafeStorageKey(key);
     return resolve(join(this.rootDir, safeKey));
   }
 }

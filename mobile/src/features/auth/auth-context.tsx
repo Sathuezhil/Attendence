@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ApiError } from '@/lib/api';
+import { ApiError, setSessionExpiredListener } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
 import { secureStorage } from '@/lib/secure-storage';
-import { fetchCurrentAdmin, loginRequest, logoutRequest } from './api';
+import { fetchCurrentAdmin, loginRequest, logoutRequest, registerRequest } from './api';
 import { PublicAdmin } from './types';
 
 interface AuthContextValue {
@@ -10,6 +10,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   user: PublicAdmin | null;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -52,6 +53,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    setSessionExpiredListener(() => {
+      queryClient.clear();
+      setUser(null);
+    });
+
+    return () => {
+      setSessionExpiredListener(null);
+    };
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       isReady,
@@ -59,6 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       async login(email: string, password: string) {
         const result = await loginRequest(email, password);
+        await secureStorage.setAccessToken(result.accessToken);
+        await secureStorage.setRefreshToken(result.refreshToken);
+        setUser(result.user);
+      },
+      async register(name: string, email: string, password: string) {
+        const result = await registerRequest({ name, email, password });
         await secureStorage.setAccessToken(result.accessToken);
         await secureStorage.setRefreshToken(result.refreshToken);
         setUser(result.user);

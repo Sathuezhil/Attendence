@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Control, Controller, FieldErrors } from 'react-hook-form';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { DateField } from '@/ui/date-field';
 import { EmployeeFormValues } from './schema';
 import { employmentStatuses, genders } from './schema';
 import { statusLabel } from './form-utils';
@@ -50,15 +51,8 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
         <Controller
           control={control}
           name="dateOfBirth"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={value ?? ''}
-            />
+          render={({ field: { onChange, value } }) => (
+            <DateField onChange={onChange} placeholder="Select date of birth" value={value ?? ''} />
           )}
         />
       </Field>
@@ -93,23 +87,6 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
               placeholder="Nationality"
               placeholderTextColor="#9ca3af"
               style={styles.input}
-              value={value ?? ''}
-            />
-          )}
-        />
-      </Field>
-      <Field label="Address" error={errors.address?.message}>
-        <Controller
-          control={control}
-          name="address"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              multiline
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="Address"
-              placeholderTextColor="#9ca3af"
-              style={[styles.input, styles.multiline]}
               value={value ?? ''}
             />
           )}
@@ -204,35 +181,12 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
           )}
         />
       </Field>
-      <Field label="Department" error={errors.department?.message}>
-        <Controller
-          control={control}
-          name="department"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="Department"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={value ?? ''}
-            />
-          )}
-        />
-      </Field>
       <Field label="Joining date" error={errors.joiningDate?.message}>
         <Controller
           control={control}
           name="joiningDate"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={value ?? ''}
-            />
+          render={({ field: { onChange, value } }) => (
+            <DateField onChange={onChange} placeholder="Select joining date" value={value ?? ''} />
           )}
         />
       </Field>
@@ -324,11 +278,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     fontSize: 16,
     color: '#111827',
-  },
-  multiline: {
-    minHeight: 84,
-    textAlignVertical: 'top',
-    paddingTop: 12,
   },
   chips: {
     flexDirection: 'row',

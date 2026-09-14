@@ -32,6 +32,7 @@ describe('DocumentsService', () => {
     appSetting: { findUnique: jest.fn() },
   };
   const storage = {
+    driver: 'local' as const,
     upload: jest.fn(),
     read: jest.fn(),
     delete: jest.fn(),
@@ -97,7 +98,17 @@ describe('DocumentsService', () => {
     expect(result.documentType).toBe('PASSPORT');
     expect(result.documentNumberMasked).toContain('*');
     expect(storage.upload).toHaveBeenCalledTimes(1);
-    expect(prisma.document.create).toHaveBeenCalledTimes(1);
+    const uploaded = storage.upload.mock.calls[0][0] as { key: string };
+    expect(uploaded.key.startsWith(`documents/${employee.id}/`)).toBe(true);
+    expect(prisma.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fileUrl: uploaded.key,
+          mimeType: 'application/pdf',
+          fileName: 'passport.pdf',
+        }),
+      }),
+    );
   });
 
   it('rejects an unsupported file without writing storage', async () => {
@@ -152,6 +163,30 @@ describe('DocumentsService', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it('filters expired documents on the server and paginates', async () => {
+    prisma.document.count.mockResolvedValue(0);
+    prisma.document.findMany.mockResolvedValue([]);
+
+    await service.list({
+      expiryStatus: 'EXPIRED',
+      search: 'Ada',
+      page: 2,
+      limit: 20,
+    });
+
+    expect(prisma.document.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 20,
+        take: 20,
+      }),
+    );
+    const call = prisma.document.findMany.mock.calls[0][0] as {
+      where: { AND: unknown[]; employee: { OR: unknown[] } };
+    };
+    expect(call.where.AND).toHaveLength(1);
+    expect(call.where.employee.OR).toHaveLength(3);
   });
 
   it('counts expired and expiring-soon documents from live data', async () => {

@@ -3,12 +3,17 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
+import { PDF_MIME } from '../exports/export.constants';
+import { toDownload } from '../exports/export-file';
+import { safeFileName } from '../exports/export-format';
+import { PdfService } from '../exports/pdf.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { QueryInvoicesDto } from './dto/query-invoices.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
@@ -21,7 +26,10 @@ import type {
 
 @Controller('invoices')
 export class InvoicesController {
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly invoicesService: InvoicesService,
+    private readonly pdfService: PdfService,
+  ) {}
 
   @Post('preview')
   preview(@Body() dto: CreateInvoiceDto): InvoicePreview {
@@ -36,6 +44,18 @@ export class InvoicesController {
   @Get()
   findAll(@Query() query: QueryInvoicesDto): Promise<PaginatedInvoices> {
     return this.invoicesService.findAll(query);
+  }
+
+  @Get(':id/pdf')
+  @Header('Cache-Control', 'private, no-store')
+  async pdf(@Param('id', ParseUUIDPipe) id: string) {
+    const invoice = await this.invoicesService.findOne(id);
+    const pdf = await this.pdfService.invoice(invoice);
+    return toDownload(
+      pdf,
+      `${safeFileName(`invoice-${invoice.invoiceNumber}`)}.pdf`,
+      PDF_MIME,
+    );
   }
 
   @Get(':id')

@@ -1,10 +1,21 @@
 import type { StringValue } from 'ms';
+import {
+  resolveStorageSettings,
+  StorageSettings,
+} from '../common/storage/storage-config';
+
+export interface FirestoreConfiguration {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+  serviceAccountJson: string;
+}
 
 export interface AppConfiguration {
   nodeEnv: string;
   port: number;
   corsOrigins: string[];
-  databaseUrl: string;
+  firestore: FirestoreConfiguration;
   jwt: {
     accessSecret: string;
     accessExpiresIn: StringValue;
@@ -15,15 +26,7 @@ export interface AppConfiguration {
     maxFileSizeBytes: number;
     allowedMimeTypes: string[];
   };
-  storage: {
-    endpoint?: string;
-    region?: string;
-    bucket?: string;
-    backupBucket?: string;
-    accessKey?: string;
-    secretKey?: string;
-    localDir: string;
-  };
+  storage: StorageSettings;
   documentExpiryWarningDays: number;
   documentExpiryUrgentDays: number;
   documentExpiryCron: string;
@@ -49,7 +52,12 @@ export default (): AppConfiguration => ({
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
-  databaseUrl: process.env.DATABASE_URL ?? '',
+  firestore: {
+    projectId: process.env.FIREBASE_PROJECT_ID ?? '',
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? '',
+    privateKey: process.env.FIREBASE_PRIVATE_KEY ?? '',
+    serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '',
+  },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET ?? '',
     accessExpiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ??
@@ -70,15 +78,7 @@ export default (): AppConfiguration => ({
       .map((value) => value.trim())
       .filter(Boolean),
   },
-  storage: {
-    endpoint: process.env.S3_ENDPOINT,
-    region: process.env.S3_REGION,
-    bucket: process.env.S3_BUCKET,
-    backupBucket: process.env.S3_BACKUP_BUCKET,
-    accessKey: process.env.S3_ACCESS_KEY,
-    secretKey: process.env.S3_SECRET_KEY,
-    localDir: process.env.STORAGE_LOCAL_DIR ?? 'storage',
-  },
+  storage: resolveStorageSettings(),
   documentExpiryWarningDays: Number(
     process.env.DOCUMENT_EXPIRY_WARNING_DAYS ?? 30,
   ),

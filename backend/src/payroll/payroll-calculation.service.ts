@@ -9,6 +9,7 @@ import {
   monthDateRange,
   overlappingDays,
   PayrollCalculation,
+  resolveOvertimeEnabled,
   resolveWorkingDaysPerMonth,
 } from './payroll-calculation';
 
@@ -39,6 +40,13 @@ export class PayrollCalculationService {
       setting?.value,
       fallback || DEFAULT_WORKING_DAYS_PER_MONTH,
     );
+  }
+
+  async isOvertimeEnabled(): Promise<boolean> {
+    const setting = await this.prisma.appSetting.findUnique({
+      where: { key: AppSettingKey.PAYROLL_WORKING_DAYS_PER_MONTH },
+    });
+    return resolveOvertimeEnabled(setting?.value);
   }
 
   async countApprovedUnpaidDays(
@@ -75,15 +83,17 @@ export class PayrollCalculationService {
     month: number,
     amounts: PayrollAmountInput,
   ): Promise<PayrollCalculation> {
-    const [workingDaysPerMonth, unpaidLeaveDays] = await Promise.all([
-      this.getWorkingDaysPerMonth(),
-      this.countApprovedUnpaidDays(employeeId, year, month),
-    ]);
+    const [workingDaysPerMonth, unpaidLeaveDays, overtimeEnabled] =
+      await Promise.all([
+        this.getWorkingDaysPerMonth(),
+        this.countApprovedUnpaidDays(employeeId, year, month),
+        this.isOvertimeEnabled(),
+      ]);
 
     return calculatePayroll({
       basicSalary: amounts.basicSalary,
       allowances: amounts.allowances ?? 0,
-      overtimeAmount: amounts.overtimeAmount ?? 0,
+      overtimeAmount: overtimeEnabled ? (amounts.overtimeAmount ?? 0) : 0,
       deductions: amounts.deductions ?? 0,
       otherDeductions: amounts.otherDeductions ?? 0,
       unpaidLeaveDays,

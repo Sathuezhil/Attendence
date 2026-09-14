@@ -1,6 +1,7 @@
 import { type Href, router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ExpiryAlert, ExpiryAlertsResponse } from '@/features/notifications/types';
+import { colors, radius, shadow } from '@/theme';
 
 export function ExpiryAlerts({ alerts }: { alerts: ExpiryAlertsResponse }) {
   return (
@@ -45,7 +46,7 @@ function Bucket({
   ink: string;
 }) {
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, shadow]}>
       <View style={[styles.badge, { backgroundColor: tint }]}>
         <Text style={[styles.badgeText, { color: ink }]}>
           {title} · {items.length}
@@ -78,11 +79,11 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 14,
     gap: 8,
   },
@@ -103,7 +104,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
   meta: {
     color: '#6b7280',

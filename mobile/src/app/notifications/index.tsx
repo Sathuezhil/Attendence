@@ -1,7 +1,6 @@
 import { type Href, router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,26 +9,31 @@ import {
   View,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { confirmAction } from '@/features/attendance/confirm';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
 import {
+  deleteNotification,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
 } from '@/features/notifications/api';
-import { AppNotification, NotificationType } from '@/features/notifications/types';
+import {
+  AppNotification,
+  NOTIFICATION_TYPES,
+  NotificationType,
+} from '@/features/notifications/types';
 import { ApiError } from '@/lib/api';
+import { colors, radius, space } from '@/theme';
+import { EmptyState, ErrorState, LoadingState } from '@/ui/screen-state';
 
-const TYPE_FILTERS: Array<NotificationType | undefined> = [
-  undefined,
-  'DOCUMENT_EXPIRING',
-  'DOCUMENT_EXPIRED',
-];
+const TYPE_FILTERS: Array<NotificationType | undefined> = [undefined, ...NOTIFICATION_TYPES];
 
 export default function NotificationsScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
   const queryClient = useQueryClient();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [type, setType] = useState<NotificationType | undefined>();
+  const [message, setMessage] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['notifications', { unreadOnly, type }],
@@ -39,7 +43,16 @@ export default function NotificationsScreen() {
 
   const markAll = useMutation({
     mutationFn: () => markAllNotificationsRead(),
+    async onSuccess(result) {
+      setMessage(result.count ? `Marked ${result.count} as read` : 'All notifications are already read');
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteNotification(id),
     async onSuccess() {
+      setMessage('Notification deleted');
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
@@ -50,23 +63,26 @@ export default function NotificationsScreen() {
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
     }
 
-    if (item.document?.id) {
-      router.push(`/documents/${item.document.id}` as Href);
-      return;
+    const href = destinationFor(item);
+    if (href) {
+      router.push(href);
     }
-    if (item.employee?.id) {
-      router.push(`/employees/${item.employee.id}` as Href);
+  }
+
+  async function handleDelete(item: AppNotification) {
+    const confirmed = await confirmAction(
+      'Delete notification',
+      'Remove this notification from your inbox?',
+    );
+    if (confirmed) {
+      remove.mutate(item.id);
     }
   }
 
   const records = query.data?.data ?? [];
 
   if (!isReady || !isAuthenticated) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#111827" />
-      </View>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -80,6 +96,7 @@ export default function NotificationsScreen() {
         }
         ListHeaderComponent={
           <View style={styles.filters}>
+            {message ? <Text style={styles.success}>{message}</Text> : null}
             <View style={styles.chips}>
               <Pressable
                 onPress={() => setUnreadOnly(false)}
@@ -120,20 +137,24 @@ export default function NotificationsScreen() {
         }
         ListEmptyComponent={
           query.isPending ? (
-            <View style={styles.centered}>
-              <ActivityIndicator size="large" color="#111827" />
-            </View>
+            <LoadingState message="Loading notifications…" />
           ) : query.error ? (
-            <Text style={styles.error}>
-              {query.error instanceof ApiError ? query.error.message : 'Unable to load notifications.'}
-            </Text>
+            <ErrorState
+              message={
+                query.error instanceof ApiError
+                  ? query.error.message
+                  : 'Unable to load notifications.'
+              }
+              onRetry={() => void query.refetch()}
+            />
           ) : (
-            <Text style={styles.empty}>No notifications yet</Text>
+            <EmptyState message="No notifications yet" />
           )
         }
         renderItem={({ item }) => (
           <Pressable
             onPress={() => void openNotification(item)}
+            onLongPress={() => void handleDelete(item)}
             style={[styles.card, item.isRead ? styles.cardRead : styles.cardUnread]}
           >
             <View style={styles.cardTop}>
@@ -141,6 +162,7 @@ export default function NotificationsScreen() {
               {item.isRead ? null : <View style={styles.dot} />}
             </View>
             <Text style={styles.message}>{item.message}</Text>
+            <Text style={styles.meta}>{item.type.replaceAll('_', ' ')}</Text>
             {item.employee ? <Text style={styles.meta}>{item.employee.fullName}</Text> : null}
             {item.document ? (
               <Text style={styles.meta}>
@@ -149,11 +171,46 @@ export default function NotificationsScreen() {
               </Text>
             ) : null}
             <Text style={styles.time}>{formatWhen(item.createdAt)}</Text>
+            <View style={styles.cardActions}>
+              {item.isRead ? null : (
+                <Pressable
+                  onPress={() => {
+                    void markNotificationRead(item.id).then(() =>
+                      queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+                    );
+                  }}
+                >
+                  <Text style={styles.actionText}>Mark read</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => void handleDelete(item)}>
+                <Text style={styles.deleteText}>Delete</Text>
+              </Pressable>
+            </View>
           </Pressable>
         )}
       />
     </View>
   );
+}
+
+function destinationFor(item: AppNotification): Href | null {
+  if (item.document?.id) {
+    return `/documents/${item.document.id}` as Href;
+  }
+  if (item.type === 'LEAVE_APPROVED' || item.type === 'LEAVE_REJECTED') {
+    return '/leave' as Href;
+  }
+  if (item.type === 'PAYROLL_CREATED') {
+    return (item.employee?.id ? `/payroll?employeeId=${item.employee.id}` : '/payroll') as Href;
+  }
+  if (item.type === 'INVOICE_OVERDUE') {
+    return '/invoices' as Href;
+  }
+  if (item.employee?.id) {
+    return `/employees/${item.employee.id}` as Href;
+  }
+  return null;
 }
 
 function formatWhen(value: string): string {
@@ -167,10 +224,10 @@ function formatWhen(value: string): string {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f4f6f8',
+    backgroundColor: colors.background,
   },
   list: {
-    padding: 16,
+    padding: space.lg,
     paddingBottom: 40,
     gap: 10,
   },
@@ -191,7 +248,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e5e7eb',
   },
   chipActive: {
-    backgroundColor: '#111827',
+    backgroundColor: colors.primary,
   },
   chipText: {
     fontSize: 12,
@@ -199,7 +256,7 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
   chipTextActive: {
-    color: '#ffffff',
+    color: colors.white,
   },
   markAll: {
     marginLeft: 'auto',
@@ -207,20 +264,24 @@ const styles = StyleSheet.create({
   markAllText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#1e40af',
+    color: colors.info,
+  },
+  success: {
+    color: colors.success,
+    fontWeight: '600',
   },
   card: {
-    borderRadius: 16,
+    borderRadius: radius.lg,
     padding: 14,
     gap: 4,
   },
   cardUnread: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#111827',
+    borderColor: colors.primary,
   },
   cardRead: {
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.surface,
   },
   cardTop: {
     flexDirection: 'row',
@@ -231,7 +292,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
   dot: {
     width: 8,
@@ -240,28 +301,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#1d4ed8',
   },
   message: {
-    color: '#111827',
+    color: colors.text,
     fontSize: 14,
   },
   meta: {
-    color: '#6b7280',
+    color: colors.muted,
     fontSize: 13,
   },
   time: {
     color: '#9ca3af',
     fontSize: 12,
   },
-  centered: {
-    padding: 24,
-    alignItems: 'center',
+  cardActions: {
+    flexDirection: 'row',
+    gap: space.lg,
+    marginTop: 6,
   },
-  empty: {
-    textAlign: 'center',
-    color: '#6b7280',
-    padding: 24,
+  actionText: {
+    color: colors.info,
+    fontWeight: '700',
+    fontSize: 13,
   },
-  error: {
-    color: '#991b1b',
-    textAlign: 'center',
+  deleteText: {
+    color: colors.danger,
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

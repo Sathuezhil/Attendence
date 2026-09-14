@@ -5,14 +5,14 @@ import { LeaveEmployeeSummary, LeaveResponse } from './leave.types';
 type LeaveWithEmployee = Leave & {
   employee: Pick<
     Employee,
-    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'department' | 'jobTitle'
+    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'jobTitle'
   >;
 };
 
 export function toLeaveEmployeeSummary(
   employee: Pick<
     Employee,
-    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'department' | 'jobTitle'
+    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'jobTitle'
   >,
 ): LeaveEmployeeSummary {
   return {
@@ -21,7 +21,6 @@ export function toLeaveEmployeeSummary(
     firstName: employee.firstName,
     lastName: employee.lastName,
     fullName: `${employee.firstName} ${employee.lastName}`.trim(),
-    department: employee.department,
     jobTitle: employee.jobTitle,
   };
 }

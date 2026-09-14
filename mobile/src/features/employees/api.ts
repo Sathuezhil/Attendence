@@ -9,9 +9,10 @@ export interface EmployeeListParams {
   page?: number;
   limit?: number;
   search?: string;
-  department?: string;
   employmentStatus?: string;
   jobTitle?: string;
+  joiningFrom?: string;
+  joiningTo?: string;
 }
 
 export function fetchEmployees(params: EmployeeListParams = {}): Promise<PaginatedEmployees> {
@@ -19,9 +20,10 @@ export function fetchEmployees(params: EmployeeListParams = {}): Promise<Paginat
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
-  if (params.department) query.set('department', params.department);
   if (params.employmentStatus) query.set('employmentStatus', params.employmentStatus);
   if (params.jobTitle) query.set('jobTitle', params.jobTitle);
+  if (params.joiningFrom) query.set('joiningFrom', params.joiningFrom);
+  if (params.joiningTo) query.set('joiningTo', params.joiningTo);
 
   const suffix = query.toString();
   return apiRequest<PaginatedEmployees>(`/employees${suffix ? `?${suffix}` : ''}`);
@@ -45,7 +47,7 @@ export function updateEmployee(id: string, payload: EmployeeWritePayload): Promi
   });
 }
 
-export function deactivateEmployee(id: string): Promise<Employee> {
+export function deleteEmployee(id: string): Promise<Employee> {
   return apiRequest<Employee>(`/employees/${id}`, {
     method: 'DELETE',
   });

@@ -25,10 +25,19 @@ describe('DocumentExpiryService', () => {
 
   let service: DocumentExpiryService;
 
+  const settings = {
+    notificationsEnabled: jest.fn().mockResolvedValue(true),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.appSetting.findUnique.mockResolvedValue(null);
-    service = new DocumentExpiryService(prisma as never, config as never);
+    settings.notificationsEnabled.mockResolvedValue(true);
+    service = new DocumentExpiryService(
+      prisma as never,
+      config as never,
+      settings as never,
+    );
   });
 
   it('creates expiry notifications from date-filtered documents', async () => {
@@ -136,5 +145,28 @@ describe('DocumentExpiryService', () => {
       'soon',
     ]);
     expect(JSON.stringify(alerts)).not.toContain('fileUrl');
+  });
+
+  it('skips creating notifications when document expiry alerts are disabled', async () => {
+    settings.notificationsEnabled.mockResolvedValue(false);
+    prisma.document.findMany.mockResolvedValue([
+      {
+        id: 'doc-x',
+        employeeId: 'emp-1',
+        documentType: 'PASSPORT',
+        expiryDate: new Date('2026-09-01T00:00:00.000Z'),
+        employee: {
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          employeeCode: 'E1',
+        },
+      },
+    ]);
+
+    await expect(service.runDailyCheck()).resolves.toEqual({
+      created: 0,
+      examined: 1,
+    });
+    expect(prisma.notification.createMany).not.toHaveBeenCalled();
   });
 });

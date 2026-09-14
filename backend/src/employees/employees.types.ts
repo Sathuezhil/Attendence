@@ -22,9 +22,7 @@ export interface EmployeeResponse {
   dateOfBirth: string | null;
   gender: Gender | null;
   nationality: string | null;
-  address: string | null;
   jobTitle: string | null;
-  department: string | null;
   joiningDate: string | null;
   employmentStatus: EmployeeStatus;
   basicSalary: number | null;

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -15,7 +16,9 @@ import { durationToMs } from '../common/utils/duration';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { AuthResponse, JwtPayload } from './auth.types';
+import { ChangePasswordDto, UpdateProfileDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { LoginThrottleService } from './login-throttle.service';
 import { RegisterDto } from './dto/register.dto';
 
 const BCRYPT_ROUNDS = 12;
@@ -28,6 +31,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService<AppConfiguration, true>,
+    private readonly loginThrottle: LoginThrottleService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
@@ -61,16 +65,20 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
+    this.loginThrottle.assertAllowed(dto.email);
     const user = await this.usersService.findByEmail(dto.email);
     if (!user) {
+      this.loginThrottle.recordFailure(dto.email);
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     const passwordMatches = await compare(dto.password, user.passwordHash);
     if (!passwordMatches) {
+      this.loginThrottle.recordFailure(dto.email);
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
+    this.loginThrottle.clear(dto.email);
     return this.issueAuth(this.usersService.toPublicAdmin(user));
   }
 
@@ -119,6 +127,60 @@ export class AuthService {
       },
     });
 
+    return { success: true };
+  }
+
+  async updateProfile(
+    adminId: string,
+    dto: UpdateProfileDto,
+  ): Promise<PublicAdmin> {
+    if (!dto.name && !dto.email) {
+      throw new BadRequestException('Provide a name or email to update');
+    }
+
+    try {
+      return await this.usersService.updateProfile(adminId, {
+        name: dto.name,
+        email: dto.email,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'An account with this email already exists',
+        );
+      }
+      throw error;
+    }
+  }
+
+  async changePassword(
+    adminId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ success: true }> {
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
+    }
+
+    const user = await this.usersService.findById(adminId);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    const matches = await compare(dto.currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    await this.usersService.updatePasswordHash(
+      adminId,
+      await hash(dto.newPassword, BCRYPT_ROUNDS),
+    );
+    await this.logout(adminId);
     return { success: true };
   }
 

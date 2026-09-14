@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { DateField } from '@/ui/date-field';
 import { previewInvoice } from './api';
 import { previewInvoiceLocally } from './calculate';
 import { addDays, money, todayDate } from './format';
@@ -184,8 +185,20 @@ export function InvoiceForm({
 
         <View style={styles.card}>
           <Text style={styles.section}>Invoice</Text>
-          <Field label="Invoice date" onChangeText={(value) => update('invoiceDate', value)} value={values.invoiceDate} />
-          <Field label="Due date" onChangeText={(value) => update('dueDate', value)} value={values.dueDate} />
+          <Text style={styles.label}>Invoice date</Text>
+          <DateField
+            allowClear={false}
+            onChange={(value) => update('invoiceDate', value)}
+            placeholder="Select invoice date"
+            value={values.invoiceDate}
+          />
+          <Text style={styles.label}>Due date</Text>
+          <DateField
+            allowClear={false}
+            onChange={(value) => update('dueDate', value)}
+            placeholder="Select due date"
+            value={values.dueDate}
+          />
           <Field label="Notes" multiline onChangeText={(value) => update('notes', value)} value={values.notes} />
         </View>
 

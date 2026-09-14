@@ -1,9 +1,11 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
   Min,
@@ -51,4 +53,23 @@ export class QueryDocumentsDto {
   })
   @IsBoolean()
   expired?: boolean;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsIn(['VALID', 'EXPIRING_SOON', 'EXPIRED'])
+  expiryStatus?: 'VALID' | 'EXPIRING_SOON' | 'EXPIRED';
+
+  @IsOptional()
+  @IsDateString()
+  expiryFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  expiryTo?: string;
 }

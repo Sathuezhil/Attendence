@@ -13,9 +13,7 @@ export interface Employee {
   dateOfBirth: string | null;
   gender: Gender | null;
   nationality: string | null;
-  address: string | null;
   jobTitle: string | null;
-  department: string | null;
   joiningDate: string | null;
   employmentStatus: EmploymentStatus;
   basicSalary: number | null;
@@ -42,9 +40,7 @@ export interface EmployeeWritePayload {
   dateOfBirth?: string | null;
   gender?: Gender | null;
   nationality?: string | null;
-  address?: string | null;
   jobTitle?: string | null;
-  department?: string | null;
   joiningDate?: string | null;
   employmentStatus?: EmploymentStatus;
   basicSalary?: number | null;

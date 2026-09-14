@@ -7,13 +7,11 @@ export const emptyEmployeeForm: EmployeeFormValues = {
   dateOfBirth: undefined,
   gender: undefined,
   nationality: undefined,
-  address: undefined,
   email: undefined,
   phone: undefined,
   alternatePhone: undefined,
   employeeCode: '',
   jobTitle: undefined,
-  department: undefined,
   joiningDate: undefined,
   employmentStatus: 'ACTIVE',
   basicSalary: undefined,
@@ -26,13 +24,11 @@ export function employeeToFormValues(employee: Employee): EmployeeFormValues {
     dateOfBirth: employee.dateOfBirth ?? undefined,
     gender: employee.gender ?? undefined,
     nationality: employee.nationality ?? undefined,
-    address: employee.address ?? undefined,
     email: employee.email ?? undefined,
     phone: employee.phone ?? undefined,
     alternatePhone: employee.alternatePhone ?? undefined,
     employeeCode: employee.employeeCode,
     jobTitle: employee.jobTitle ?? undefined,
-    department: employee.department ?? undefined,
     joiningDate: employee.joiningDate ?? undefined,
     employmentStatus: employee.employmentStatus,
     basicSalary: employee.basicSalary === null ? undefined : String(employee.basicSalary),
@@ -60,9 +56,7 @@ export function formValuesToPayload(
   const alternatePhone = present(values.alternatePhone);
   const dateOfBirth = present(values.dateOfBirth);
   const nationality = present(values.nationality);
-  const address = present(values.address);
   const jobTitle = present(values.jobTitle);
-  const department = present(values.department);
   const joiningDate = present(values.joiningDate);
   const basicSalary = present(values.basicSalary);
 
@@ -84,14 +78,8 @@ export function formValuesToPayload(
   if (nationality) payload.nationality = nationality;
   else if (mode === 'update') payload.nationality = null;
 
-  if (address) payload.address = address;
-  else if (mode === 'update') payload.address = null;
-
   if (jobTitle) payload.jobTitle = jobTitle;
   else if (mode === 'update') payload.jobTitle = null;
-
-  if (department) payload.department = department;
-  else if (mode === 'update') payload.department = null;
 
   if (joiningDate) payload.joiningDate = joiningDate;
   else if (mode === 'update') payload.joiningDate = null;

@@ -9,18 +9,49 @@ import { toDateOnly } from './working-hours';
 type AttendanceWithEmployee = Attendance & {
   employee: Pick<
     Employee,
-    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'department' | 'jobTitle'
+    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'jobTitle'
   >;
 };
 
 export function toPublicStatus(status: AttendanceStatus): AttendanceStatus {
-  return status === AttendanceStatus.LEAVE ? AttendanceStatus.ON_LEAVE : status;
+  if (
+    status === AttendanceStatus.LEAVE ||
+    status === AttendanceStatus.ABSENT
+  ) {
+    return AttendanceStatus.ON_LEAVE;
+  }
+
+  if (status === AttendanceStatus.LATE) {
+    return AttendanceStatus.PRESENT;
+  }
+
+  return status;
+}
+
+export function storedStatusesForPublic(
+  status: AttendanceStatus,
+): AttendanceStatus[] {
+  if (status === AttendanceStatus.PRESENT) {
+    return [AttendanceStatus.PRESENT, AttendanceStatus.LATE];
+  }
+  if (
+    status === AttendanceStatus.ON_LEAVE ||
+    status === AttendanceStatus.LEAVE ||
+    status === AttendanceStatus.ABSENT
+  ) {
+    return [
+      AttendanceStatus.ON_LEAVE,
+      AttendanceStatus.LEAVE,
+      AttendanceStatus.ABSENT,
+    ];
+  }
+  return [status];
 }
 
 export function toEmployeeSummary(
   employee: Pick<
     Employee,
-    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'department' | 'jobTitle'
+    'id' | 'employeeCode' | 'firstName' | 'lastName' | 'jobTitle'
   >,
 ): AttendanceEmployeeSummary {
   return {
@@ -29,7 +60,6 @@ export function toEmployeeSummary(
     firstName: employee.firstName,
     lastName: employee.lastName,
     fullName: `${employee.firstName} ${employee.lastName}`.trim(),
-    department: employee.department,
     jobTitle: employee.jobTitle,
   };
 }
@@ -66,7 +96,7 @@ export function toDayRow(
       attendanceDate,
       checkIn: null,
       checkOut: null,
-      status: AttendanceStatus.ABSENT,
+      status: AttendanceStatus.ON_LEAVE,
       lateMinutes: null,
       workingMinutes: null,
       notes: null,

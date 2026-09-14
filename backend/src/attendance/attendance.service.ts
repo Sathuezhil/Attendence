@@ -17,12 +17,14 @@ import {
 } from '@prisma/client';
 import { parseOptionalDate } from '../common/utils/parse-date';
 import { parseOptionalDateTime } from '../common/utils/parse-date-time';
+import { NotificationInboxService } from '../notifications/notification-inbox.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   toAttendanceResponse,
   toDayRow,
   toEmployeeSummary,
   toPublicStatus,
+  storedStatusesForPublic,
 } from './attendance.mapper';
 import {
   AttendanceResponse,
@@ -32,6 +34,7 @@ import {
 } from './attendance.types';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
+import { MarkDayDto } from './dto/mark-day.dto';
 import { QueryAttendanceDto } from './dto/query-attendance.dto';
 import { QueryTodayAttendanceDto } from './dto/query-today-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
@@ -49,7 +52,6 @@ const employeeSelect = {
   employeeCode: true,
   firstName: true,
   lastName: true,
-  department: true,
   jobTitle: true,
 } satisfies Prisma.EmployeeSelect;
 
@@ -61,7 +63,10 @@ type AttendanceWithEmployee = Attendance & {
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inbox?: NotificationInboxService,
+  ) {}
 
   async getWorkingHours(): Promise<WorkingHours> {
     const setting = await this.prisma.appSetting.findUnique({
@@ -78,14 +83,19 @@ export class AttendanceService {
     const date = this.resolveDate(query.date, hours);
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
-    const search = query.search?.trim().toLowerCase();
+    const search = query.search?.trim();
 
     const employees = await this.prisma.employee.findMany({
       where: {
         deletedAt: null,
         status: EmployeeStatus.ACTIVE,
-        department: query.department
-          ? { equals: query.department, mode: 'insensitive' }
+        ...(query.employeeId ? { id: query.employeeId } : {}),
+        OR: search
+          ? [
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName: { contains: search, mode: 'insensitive' } },
+              { employeeCode: { contains: search, mode: 'insensitive' } },
+            ]
           : undefined,
       },
       select: employeeSelect,
@@ -115,7 +125,7 @@ export class AttendanceService {
         byEmployee.get(employee.id),
       );
 
-      if (leaveIds.has(employee.id) && !row.checkIn) {
+      if (leaveIds.has(employee.id) && row.virtual) {
         return {
           ...row,
           status: AttendanceStatus.ON_LEAVE,
@@ -124,21 +134,6 @@ export class AttendanceService {
 
       return row;
     });
-
-    if (search) {
-      rows = rows.filter((row) => {
-        const haystack = [
-          row.employee.fullName,
-          row.employee.employeeCode,
-          row.employee.department,
-          row.employee.jobTitle,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(search);
-      });
-    }
 
     if (query.status) {
       rows = rows.filter((row) => row.status === query.status);
@@ -159,7 +154,7 @@ export class AttendanceService {
   }
 
   async getSummaryCounts(date: Date): Promise<AttendanceSummary> {
-    const [totalEmployees, attendanceRows, leaveIds] = await Promise.all([
+    const [totalEmployees, attendanceRows] = await Promise.all([
       this.prisma.employee.count({
         where: { deletedAt: null, status: EmployeeStatus.ACTIVE },
       }),
@@ -168,30 +163,20 @@ export class AttendanceService {
           date,
           employee: { deletedAt: null, status: EmployeeStatus.ACTIVE },
         },
-        select: { employeeId: true, status: true, checkIn: true },
+        select: { employeeId: true, status: true },
       }),
-      this.getApprovedLeaveEmployeeIds(date),
     ]);
 
     const counts = {
       present: 0,
-      late: 0,
       halfDay: 0,
       holiday: 0,
-      storedAbsent: 0,
     };
 
     for (const row of attendanceRows) {
-      if (leaveIds.has(row.employeeId) && !row.checkIn) {
-        continue;
-      }
-
       switch (toPublicStatus(row.status)) {
         case AttendanceStatus.PRESENT:
           counts.present += 1;
-          break;
-        case AttendanceStatus.LATE:
-          counts.late += 1;
           break;
         case AttendanceStatus.HALF_DAY:
           counts.halfDay += 1;
@@ -199,31 +184,22 @@ export class AttendanceService {
         case AttendanceStatus.HOLIDAY:
           counts.holiday += 1;
           break;
-        case AttendanceStatus.ABSENT:
-          counts.storedAbsent += 1;
-          break;
         default:
           break;
       }
     }
 
-    const onLeave = leaveIds.size;
-    const accounted =
-      counts.present +
-      counts.late +
-      counts.halfDay +
-      onLeave +
-      counts.holiday +
-      counts.storedAbsent;
+    const accounted = counts.present + counts.halfDay + counts.holiday;
+    const onLeave = Math.max(0, totalEmployees - accounted);
 
     return {
       date: toDateOnly(date),
       totalEmployees,
       present: counts.present,
-      late: counts.late,
+      late: 0,
       halfDay: counts.halfDay,
       onLeave,
-      absent: Math.max(0, totalEmployees - accounted),
+      absent: 0,
     };
   }
 
@@ -292,10 +268,63 @@ export class AttendanceService {
         include: { employee: { select: employeeSelect } },
       });
 
+      if (metrics.lateMinutes > hours.lateThresholdMinutes) {
+        await this.inbox?.notify({
+          type: 'ATTENDANCE_ALERT',
+          title: 'Late check-in',
+          message: `${employee.firstName} ${employee.lastName} checked in late.`,
+          employeeId: employee.id,
+          eventKey: `attendance-late:${record.id}`,
+        });
+      }
+
       return toAttendanceResponse(record);
     } catch (error) {
       this.rethrowKnownError(error);
     }
+  }
+
+  async markDay(dto: MarkDayDto): Promise<AttendanceResponse> {
+    const employee = await this.findActiveEmployeeOrThrow(dto.employeeId);
+    const hours = await this.getWorkingHours();
+    const date = calendarDate(hours.timezone);
+    const clearsTimes =
+      dto.status === AttendanceStatus.ON_LEAVE ||
+      dto.status === AttendanceStatus.HOLIDAY ||
+      dto.status === AttendanceStatus.ABSENT;
+
+    const record = await this.prisma.attendance.upsert({
+      where: {
+        employeeId_date: {
+          employeeId: employee.id,
+          date,
+        },
+      },
+      create: {
+        employeeId: employee.id,
+        date,
+        status: dto.status,
+        source: 'MANUAL',
+        checkIn: null,
+        checkOut: null,
+        lateMinutes: null,
+        workingMinutes: null,
+      },
+      update: {
+        status: dto.status,
+        ...(clearsTimes
+          ? {
+              checkIn: null,
+              checkOut: null,
+              lateMinutes: null,
+              workingMinutes: null,
+            }
+          : {}),
+      },
+      include: { employee: { select: employeeSelect } },
+    });
+
+    return toAttendanceResponse(record);
   }
 
   async checkOut(id: string, dto: CheckOutDto): Promise<AttendanceResponse> {
@@ -458,10 +487,21 @@ export class AttendanceService {
       throw new BadRequestException('endDate must be on or after startDate');
     }
 
-    const statusFilter =
-      query.status === AttendanceStatus.ON_LEAVE
-        ? { in: [AttendanceStatus.ON_LEAVE, AttendanceStatus.LEAVE] }
+    if (query.lateOnly && query.absentOnly) {
+      throw new BadRequestException(
+        'lateOnly and absentOnly cannot be combined',
+      );
+    }
+
+    const forcedStatus = query.lateOnly
+      ? AttendanceStatus.LATE
+      : query.absentOnly
+        ? AttendanceStatus.ON_LEAVE
         : query.status;
+
+    const statusFilter = forcedStatus
+      ? { in: storedStatusesForPublic(forcedStatus) }
+      : undefined;
 
     let date: Prisma.DateTimeFilter | Date | undefined;
     if (startDate || endDate) {
@@ -473,15 +513,21 @@ export class AttendanceService {
       date = exactDate;
     }
 
+    const search = query.search?.trim();
+
     return {
       employeeId: query.employeeId,
       date,
       status: statusFilter,
-      employee: query.department
-        ? {
-            department: { equals: query.department, mode: 'insensitive' },
-          }
-        : undefined,
+      employee: {
+        OR: search
+          ? [
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName: { contains: search, mode: 'insensitive' } },
+              { employeeCode: { contains: search, mode: 'insensitive' } },
+            ]
+          : undefined,
+      },
     };
   }
 

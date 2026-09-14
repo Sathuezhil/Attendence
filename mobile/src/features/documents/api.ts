@@ -15,6 +15,10 @@ export interface DocumentListParams {
   documentType?: DocumentType;
   expiringWithin?: number;
   expired?: boolean;
+  search?: string;
+  expiryStatus?: 'VALID' | 'EXPIRING_SOON' | 'EXPIRED';
+  expiryFrom?: string;
+  expiryTo?: string;
 }
 
 function toQuery(params: DocumentListParams): string {

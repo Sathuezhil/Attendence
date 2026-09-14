@@ -12,7 +12,6 @@ const employee = {
   employeeCode: 'EMP-001',
   firstName: 'Ada',
   lastName: 'Lovelace',
-  department: 'IT',
   jobTitle: 'Engineer',
   status: EmployeeStatus.ACTIVE,
   deletedAt: null,
@@ -44,6 +43,7 @@ describe('AttendanceService', () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      upsert: jest.fn(),
       count: jest.fn(),
       groupBy: jest.fn(),
     },
@@ -56,7 +56,12 @@ describe('AttendanceService', () => {
     jest.clearAllMocks();
     prisma.appSetting.findUnique.mockResolvedValue(null);
     prisma.leave.findMany.mockResolvedValue([]);
-    service = new AttendanceService(prisma as never);
+    service = new AttendanceService(
+      prisma as never,
+      {
+        notify: jest.fn(),
+      } as never,
+    );
   });
 
   it('summarizes today without creating absent rows', async () => {
@@ -80,9 +85,10 @@ describe('AttendanceService', () => {
     );
 
     expect(summary.totalEmployees).toBe(5);
-    expect(summary.present).toBe(2);
-    expect(summary.late).toBe(1);
-    expect(summary.absent).toBe(2);
+    expect(summary.present).toBe(3);
+    expect(summary.late).toBe(0);
+    expect(summary.absent).toBe(0);
+    expect(summary.onLeave).toBe(2);
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
 
@@ -101,9 +107,9 @@ describe('AttendanceService', () => {
       new Date('2026-09-12T00:00:00.000Z'),
     );
 
-    expect(summary.onLeave).toBe(1);
+    expect(summary.onLeave).toBe(4);
     expect(summary.present).toBe(1);
-    expect(summary.absent).toBe(3);
+    expect(summary.absent).toBe(0);
     expect(prisma.attendance.create).not.toHaveBeenCalled();
   });
 
@@ -168,7 +174,89 @@ describe('AttendanceService', () => {
     expect(prisma.attendance.update).toHaveBeenCalledTimes(1);
   });
 
+  it('filters attendance history by lateOnly on the server', async () => {
+    prisma.attendance.count.mockResolvedValue(0);
+    prisma.attendance.findMany.mockResolvedValue([]);
+
+    await service.findAll({ lateOnly: true, page: 1, limit: 20 });
+
+    expect(prisma.attendance.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+        where: expect.objectContaining({
+          status: { in: [AttendanceStatus.LATE] },
+        }),
+      }),
+    );
+  });
+
+  it('rejects combining lateOnly and absentOnly', async () => {
+    await expect(
+      service.findAll({ lateOnly: true, absentOnly: true }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('does not permanently delete attendance', () => {
     expect(() => service.refuseDelete()).toThrow(MethodNotAllowedException);
+  });
+
+  it('marks today as off day even when no attendance row exists', async () => {
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.attendance.upsert.mockResolvedValue({
+      ...record,
+      status: AttendanceStatus.HOLIDAY,
+      checkIn: null,
+      checkOut: null,
+      lateMinutes: null,
+      workingMinutes: null,
+    });
+
+    const result = await service.markDay({
+      employeeId: employee.id,
+      status: AttendanceStatus.HOLIDAY,
+    });
+
+    expect(result.status).toBe(AttendanceStatus.HOLIDAY);
+    expect(prisma.attendance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          employeeId: employee.id,
+          status: AttendanceStatus.HOLIDAY,
+        }),
+        update: expect.objectContaining({
+          status: AttendanceStatus.HOLIDAY,
+          checkIn: null,
+          checkOut: null,
+        }),
+      }),
+    );
+  });
+
+  it('keeps check-in times when marking today as active', async () => {
+    prisma.employee.findFirst.mockResolvedValue(employee);
+    prisma.attendance.upsert.mockResolvedValue(record);
+
+    await service.markDay({
+      employeeId: employee.id,
+      status: AttendanceStatus.PRESENT,
+    });
+
+    expect(prisma.attendance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { status: AttendanceStatus.PRESENT },
+      }),
+    );
+  });
+
+  it('rejects marking a day for a missing employee', async () => {
+    prisma.employee.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.markDay({
+        employeeId: employee.id,
+        status: AttendanceStatus.ON_LEAVE,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

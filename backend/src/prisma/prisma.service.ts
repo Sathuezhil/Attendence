@@ -4,11 +4,11 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { FirestorePrismaClient } from './firestore/firestore-client';
 
 @Injectable()
 export class PrismaService
-  extends PrismaClient
+  extends FirestorePrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
@@ -16,9 +16,9 @@ export class PrismaService
   async onModuleInit(): Promise<void> {
     try {
       await this.$connect();
-      this.logger.log('Connected to PostgreSQL');
+      this.logger.log('Connected to Firestore');
     } catch (error) {
-      this.logger.error('Failed to connect to PostgreSQL on startup', error);
+      this.logger.error('Failed to connect to Firestore on startup', error);
     }
   }
 

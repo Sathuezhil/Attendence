@@ -11,7 +11,6 @@ const employee = {
   employeeCode: 'EMP-001',
   firstName: 'Ada',
   lastName: 'Lovelace',
-  department: 'IT',
   jobTitle: 'Engineer',
   status: EmployeeStatus.ACTIVE,
   deletedAt: null,
@@ -44,6 +43,7 @@ describe('LeaveService', () => {
       findMany: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
+      aggregate: jest.fn(),
     },
   };
 
@@ -51,7 +51,12 @@ describe('LeaveService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new LeaveService(prisma as never);
+    prisma.leave.aggregate.mockResolvedValue({ _sum: { totalDays: 0 } });
+    service = new LeaveService(
+      prisma as never,
+      { notify: jest.fn() } as never,
+      { getLeaveLimit: jest.fn().mockResolvedValue(undefined) } as never,
+    );
   });
 
   it('creates leave and calculates total days on the backend', async () => {
@@ -151,6 +156,28 @@ describe('LeaveService', () => {
 
     const result = await service.cancel(pendingLeave.id);
     expect(result.status).toBe(LeaveRequestStatus.CANCELLED);
+  });
+
+  it('filters leave by employee search and date range on the server', async () => {
+    prisma.leave.count.mockResolvedValue(0);
+    prisma.leave.findMany.mockResolvedValue([]);
+
+    await service.findAll({
+      search: 'Ada',
+      leaveType: LeaveType.ANNUAL,
+      status: LeaveRequestStatus.PENDING,
+      startDate: '2026-10-01',
+      endDate: '2026-10-31',
+      page: 1,
+      limit: 20,
+    });
+
+    expect(prisma.leave.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+      }),
+    );
   });
 
   it('throws when the employee is missing', async () => {

@@ -1,5 +1,5 @@
 import { type Href, router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,7 +7,6 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +23,11 @@ import {
 } from '@/features/attendance/format';
 import { AttendanceDayRow, AttendanceStatus } from '@/features/attendance/types';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { SearchBar } from '@/features/filters/search-bar';
+import { StatusFilter } from '@/features/filters/status-filter';
+import { useDebouncedValue } from '@/features/filters/use-debounced-value';
 import { ApiError } from '@/lib/api';
+import { DateField } from '@/ui/date-field';
 
 export default function AttendanceScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
@@ -32,17 +35,16 @@ export default function AttendanceScreen() {
   const [date, setDate] = useState(todayDate());
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<AttendanceStatus | undefined>();
-  const [department, setDepartment] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const debouncedSearch = useDebouncedValue(search);
 
   const query = useQuery({
-    queryKey: ['attendance', 'today', { date, search, status, department }],
+    queryKey: ['attendance', 'today', { date, search: debouncedSearch, status }],
     queryFn: () =>
       fetchTodayAttendance({
         date,
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         status,
-        department: department.trim() || undefined,
         limit: 100,
       }),
     enabled: isReady && isAuthenticated,
@@ -64,7 +66,6 @@ export default function AttendanceScreen() {
     },
   });
 
-  const statusFilters = useMemo(() => [undefined, ...attendanceStatuses], []);
   const busy = checkIn.isPending || checkOut.isPending;
 
   async function onCheckIn(row: AttendanceDayRow) {
@@ -116,10 +117,10 @@ export default function AttendanceScreen() {
               <Pressable onPress={() => setDate((value) => shiftDate(value, -1))} style={styles.dateButton}>
                 <Text style={styles.dateButtonText}>Prev</Text>
               </Pressable>
-              <TextInput
-                onChangeText={setDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
+              <DateField
+                allowClear={false}
+                onChange={setDate}
+                placeholder="Select date"
                 style={styles.dateInput}
                 value={date}
               />
@@ -131,43 +132,20 @@ export default function AttendanceScreen() {
             {summary ? (
               <View style={styles.summaryGrid}>
                 <SummaryChip label="Total" value={summary.totalEmployees} />
-                <SummaryChip label="Present" value={summary.present} />
-                <SummaryChip label="Absent" value={summary.absent} />
-                <SummaryChip label="Late" value={summary.late} />
+                <SummaryChip label="Active" value={summary.present + summary.late} />
+                <SummaryChip label="Leave" value={summary.absent + summary.onLeave} />
                 <SummaryChip label="Half-day" value={summary.halfDay} />
               </View>
             ) : null}
 
-            <TextInput
-              onChangeText={setSearch}
-              placeholder="Search employees"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={search}
+            <SearchBar onChange={setSearch} placeholder="Search employees" value={search} />
+            <StatusFilter
+              allLabel="All"
+              labelOf={statusLabel}
+              onChange={setStatus}
+              options={attendanceStatuses}
+              value={status}
             />
-            <TextInput
-              onChangeText={setDepartment}
-              placeholder="Filter by department"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={department}
-            />
-            <View style={styles.chips}>
-              {statusFilters.map((option) => {
-                const selected = status === option;
-                return (
-                  <Pressable
-                    key={option ?? 'ALL'}
-                    onPress={() => setStatus(option)}
-                    style={[styles.chip, selected ? styles.chipActive : null]}
-                  >
-                    <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>
-                      {option ? statusLabel(option) : 'All'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
 
             <Pressable
               onPress={() => router.push('/attendance/history' as Href)}
@@ -307,12 +285,6 @@ const styles = StyleSheet.create({
   dateInput: {
     flex: 1,
     minHeight: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    color: '#111827',
   },
   summaryGrid: {
     flexDirection: 'row',

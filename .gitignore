@@ -6,8 +6,15 @@ coverage/
 .DS_Store
 *.log
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.production.example
 .idea/
 .vscode/
 *.tsbuildinfo
+backups/
+*.dump
+*.sql.gz
+storage/
+uploads/
+tmp/

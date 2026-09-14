@@ -1,7 +1,7 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppConfiguration } from '../../config/configuration';
-import { LocalObjectStorage } from './local-object-storage';
+import { createObjectStorage } from './create-object-storage';
 import { OBJECT_STORAGE } from './storage.tokens';
 
 @Global()
@@ -11,8 +11,10 @@ import { OBJECT_STORAGE } from './storage.tokens';
       provide: OBJECT_STORAGE,
       inject: [ConfigService],
       useFactory: (config: ConfigService<AppConfiguration, true>) => {
-        const localDir = config.get('storage', { infer: true }).localDir;
-        return new LocalObjectStorage(localDir);
+        return createObjectStorage(
+          config.get('storage', { infer: true }),
+          new Logger('StorageModule'),
+        );
       },
     },
   ],

@@ -14,6 +14,8 @@ import {
 } from '@prisma/client';
 import { parseOptionalDate } from '../common/utils/parse-date';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationInboxService } from '../notifications/notification-inbox.service';
+import { SettingsService } from '../settings/settings.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { QueryLeaveDto } from './dto/query-leave.dto';
 import { RejectLeaveDto } from './dto/reject-leave.dto';
@@ -27,7 +29,6 @@ const employeeSelect = {
   employeeCode: true,
   firstName: true,
   lastName: true,
-  department: true,
   jobTitle: true,
 } satisfies Prisma.EmployeeSelect;
 
@@ -43,13 +44,22 @@ type LeaveWithEmployee = Leave & {
 
 @Injectable()
 export class LeaveService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inbox: NotificationInboxService,
+    private readonly settings: SettingsService,
+  ) {}
 
   async create(dto: CreateLeaveDto): Promise<LeaveResponse> {
     const employee = await this.findActiveEmployeeOrThrow(dto.employeeId);
     const { startDate, endDate } = this.parseRange(dto.startDate, dto.endDate);
     this.assertReason(dto.leaveType, dto.reason);
     await this.assertNoOverlap(employee.id, startDate, endDate);
+    await this.assertWithinLimit(
+      employee.id,
+      dto.leaveType,
+      calculateTotalDays(startDate, endDate),
+    );
 
     const record = await this.prisma.leave.create({
       data: {
@@ -158,6 +168,14 @@ export class LeaveService {
       include: { employee: { select: employeeSelect } },
     });
 
+    await this.inbox.notify({
+      type: 'LEAVE_APPROVED',
+      title: 'Leave approved',
+      message: `${record.employee.firstName} ${record.employee.lastName}'s leave was approved.`,
+      employeeId: record.employeeId,
+      eventKey: `leave-approved:${record.id}`,
+    });
+
     return toLeaveResponse(record);
   }
 
@@ -172,6 +190,14 @@ export class LeaveService {
         approvedAt: null,
       },
       include: { employee: { select: employeeSelect } },
+    });
+
+    await this.inbox.notify({
+      type: 'LEAVE_REJECTED',
+      title: 'Leave rejected',
+      message: `${record.employee.firstName} ${record.employee.lastName}'s leave was rejected.`,
+      employeeId: record.employeeId,
+      eventKey: `leave-rejected:${record.id}`,
     });
 
     return toLeaveResponse(record);
@@ -213,6 +239,34 @@ export class LeaveService {
     });
 
     return new Set(rows.map((row) => row.employeeId));
+  }
+
+  private async assertWithinLimit(
+    employeeId: string,
+    leaveType: LeaveType,
+    requestedDays: number,
+  ): Promise<void> {
+    const limit = await this.settings.getLeaveLimit(leaveType);
+    if (limit === undefined) {
+      return;
+    }
+
+    const used = await this.prisma.leave.aggregate({
+      where: {
+        employeeId,
+        leaveType,
+        status: {
+          in: [LeaveRequestStatus.PENDING, LeaveRequestStatus.APPROVED],
+        },
+      },
+      _sum: { totalDays: true },
+    });
+    const already = used._sum.totalDays ?? 0;
+    if (already + requestedDays > limit) {
+      throw new BadRequestException(
+        `${leaveType} leave exceeds the annual limit of ${limit} days`,
+      );
+    }
   }
 
   private async requirePending(id: string): Promise<LeaveWithEmployee> {

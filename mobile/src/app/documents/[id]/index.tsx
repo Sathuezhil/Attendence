@@ -85,6 +85,14 @@ export default function DocumentDetailsScreen() {
         window.open(localUri, '_blank', 'noopener,noreferrer');
         return;
       }
+      const Sharing = await import('expo-sharing');
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(localUri, {
+          mimeType: query.data.mimeType,
+          dialogTitle: query.data.fileName,
+        });
+        return;
+      }
       await Linking.openURL(localUri);
     } catch (error) {
       setPreviewError(error instanceof ApiError ? error.message : 'Unable to open this document.');

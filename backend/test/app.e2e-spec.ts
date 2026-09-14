@@ -8,8 +8,7 @@ describe('Health (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
-    process.env.DATABASE_URL ??=
-      'postgresql://postgres:postgres@localhost:5432/employee_management?schema=public';
+    process.env.FIREBASE_PROJECT_ID ??= 'employee-management-test';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],

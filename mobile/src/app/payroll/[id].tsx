@@ -1,5 +1,6 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,6 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { confirmAction } from '@/features/attendance/confirm';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { downloadAndOpenExport } from '@/features/exports/open-file';
 import { cancelPayroll, fetchPayrollRecord, markPayrollPaid } from '@/features/payroll/api';
 import { labelOf, money, monthLabel, statusColor } from '@/features/payroll/format';
 import { ApiError } from '@/lib/api';
@@ -19,6 +21,8 @@ export default function PayrollDetailsScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['payroll', id],
@@ -100,33 +104,53 @@ export default function PayrollDetailsScreen() {
         <Row label="Notes" value={record.notes} />
       </Section>
 
-      {pending ? (
-        <View style={styles.actions}>
-          <Pressable
-            disabled={pay.isPending}
-            onPress={async () => {
-              if (await confirmAction('Mark paid', 'Mark this payroll as paid?')) {
-                pay.mutate();
-              }
-            }}
-            style={styles.button}
-          >
-            <Text style={styles.buttonText}>{pay.isPending ? 'Updating…' : 'Mark paid'}</Text>
-          </Pressable>
-          <Pressable
-            disabled={cancel.isPending}
-            onPress={async () => {
-              if (await confirmAction('Cancel payroll', 'Cancel this payroll record?')) {
-                cancel.mutate();
-              }
-            }}
-            style={styles.dangerButton}
-          >
-            <Text style={styles.dangerText}>{cancel.isPending ? 'Cancelling…' : 'Cancel payroll'}</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <View style={styles.actions}>
+        <Pressable
+          disabled={exporting}
+          onPress={async () => {
+            setExporting(true);
+            setExportError(null);
+            try {
+              await downloadAndOpenExport(`/payroll/${record.id}/payslip`);
+            } catch (error) {
+              setExportError(error instanceof ApiError ? error.message : 'Unable to generate this payslip.');
+            } finally {
+              setExporting(false);
+            }
+          }}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>{exporting ? 'Generating…' : 'Generate Payslip'}</Text>
+        </Pressable>
+        {pending ? (
+          <>
+            <Pressable
+              disabled={pay.isPending}
+              onPress={async () => {
+                if (await confirmAction('Mark paid', 'Mark this payroll as paid?')) {
+                  pay.mutate();
+                }
+              }}
+              style={styles.button}
+            >
+              <Text style={styles.buttonText}>{pay.isPending ? 'Updating…' : 'Mark paid'}</Text>
+            </Pressable>
+            <Pressable
+              disabled={cancel.isPending}
+              onPress={async () => {
+                if (await confirmAction('Cancel payroll', 'Cancel this payroll record?')) {
+                  cancel.mutate();
+                }
+              }}
+              style={styles.dangerButton}
+            >
+              <Text style={styles.dangerText}>{cancel.isPending ? 'Cancelling…' : 'Cancel payroll'}</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
 
+      {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
       {actionError ? (
         <Text style={styles.error}>
           {actionError instanceof ApiError ? actionError.message : 'Unable to update payroll.'}

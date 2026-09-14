@@ -18,6 +18,7 @@ import { createLeave } from '@/features/leave/api';
 import { calculateDisplayDays, labelOf, leaveTypes } from '@/features/leave/format';
 import { LeaveType } from '@/features/leave/types';
 import { ApiError } from '@/lib/api';
+import { DateField } from '@/ui/date-field';
 
 export default function NewLeaveScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
@@ -57,7 +58,7 @@ export default function NewLeaveScreen() {
       return;
     }
     if (!totalDays) {
-      setError('Enter a valid start and end date (YYYY-MM-DD)');
+      setError('Select a valid start and end date');
       return;
     }
 
@@ -133,23 +134,11 @@ export default function NewLeaveScreen() {
         </View>
 
         <Text style={styles.label}>Start date</Text>
-        <TextInput
-          onChangeText={setStartDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={startDate}
-        />
+        <DateField onChange={setStartDate} placeholder="Select start date" value={startDate} />
         <Text style={styles.label}>End date</Text>
-        <TextInput
-          onChangeText={setEndDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={endDate}
-        />
+        <DateField onChange={setEndDate} placeholder="Select end date" value={endDate} />
         <Text style={styles.days}>
-          Total days: {totalDays ?? 'Enter a valid date range'}
+          Total days: {totalDays ?? 'Select a valid date range'}
         </Text>
 
         <Text style={styles.label}>Reason</Text>

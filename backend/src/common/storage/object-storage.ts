@@ -10,7 +10,10 @@ export interface UploadObjectInput {
   contentType: string;
 }
 
+export type StorageDriver = 'gdrive' | 'local';
+
 export interface ObjectStorage {
+  readonly driver: StorageDriver;
   upload(input: UploadObjectInput): Promise<StoredObject>;
   getSignedDownloadUrl(key: string, expiresInSeconds?: number): Promise<string>;
   read(key: string): Promise<Buffer>;

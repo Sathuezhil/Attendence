@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -8,6 +9,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { PUBLIC_ATTENDANCE_STATUSES } from '../attendance.types';
 
 const optionalTrim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -46,11 +48,37 @@ export class QueryAttendanceDto {
   endDate?: string;
 
   @IsOptional()
-  @IsIn(['PRESENT', 'ABSENT', 'LATE', 'HALF_DAY', 'ON_LEAVE'])
-  status?: 'PRESENT' | 'ABSENT' | 'LATE' | 'HALF_DAY' | 'ON_LEAVE';
+  @IsIn([...PUBLIC_ATTENDANCE_STATUSES])
+  status?: (typeof PUBLIC_ATTENDANCE_STATUSES)[number];
 
   @Transform(optionalTrim)
   @IsOptional()
   @IsString()
-  department?: string;
+  search?: string;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === true || value === 'true' || value === '1') {
+      return true;
+    }
+    if (value === false || value === 'false' || value === '0') {
+      return false;
+    }
+    return value;
+  })
+  @IsBoolean()
+  lateOnly?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === true || value === 'true' || value === '1') {
+      return true;
+    }
+    if (value === false || value === 'false' || value === '0') {
+      return false;
+    }
+    return value;
+  })
+  @IsBoolean()
+  absentOnly?: boolean;
 }

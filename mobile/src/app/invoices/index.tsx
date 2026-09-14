@@ -1,5 +1,5 @@
 import { type Href, router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,39 +7,59 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { DateRangePicker } from '@/features/filters/date-range-picker';
+import { FilterButton } from '@/features/filters/filter-button';
+import { FilterModal } from '@/features/filters/filter-modal';
+import { SearchBar } from '@/features/filters/search-bar';
+import { StatusFilter } from '@/features/filters/status-filter';
+import { useDebouncedValue } from '@/features/filters/use-debounced-value';
 import { fetchInvoices } from '@/features/invoices/api';
 import { labelOf, money, statusColor } from '@/features/invoices/format';
 import { INVOICE_STATUSES, Invoice, InvoiceStatus } from '@/features/invoices/types';
 import { ApiError } from '@/lib/api';
+import { FabButton, useSafeBottomOffset } from '@/ui/fab-button';
 
 const PAGE_SIZE = 20;
 
 export default function InvoiceListScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
+  const listBottom = useSafeBottomOffset(96);
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [customer, setCustomer] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [status, setStatus] = useState<InvoiceStatus | undefined>();
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-
-  useEffect(() => {
-    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(handle);
-  }, [search]);
+  const [dueFrom, setDueFrom] = useState('');
+  const [dueTo, setDueTo] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search);
+  const filterCount = [
+    customer.trim(),
+    invoiceNumber.trim(),
+    status,
+    fromDate,
+    toDate,
+    dueFrom,
+    dueTo,
+  ].filter(Boolean).length;
 
   const filters = useMemo(
     () => ({
-      search: debouncedSearch || undefined,
+      search: debouncedSearch.trim() || undefined,
+      customer: customer.trim() || undefined,
+      invoiceNumber: invoiceNumber.trim() || undefined,
       status,
       fromDate: fromDate.trim() || undefined,
       toDate: toDate.trim() || undefined,
+      dueFrom: dueFrom.trim() || undefined,
+      dueTo: dueTo.trim() || undefined,
     }),
-    [debouncedSearch, fromDate, status, toDate],
+    [customer, debouncedSearch, dueFrom, dueTo, fromDate, invoiceNumber, status, toDate],
   );
 
   const query = useInfiniteQuery({
@@ -71,7 +91,7 @@ export default function InvoiceListScreen() {
       <FlatList
         data={invoices}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: listBottom }]}
         refreshControl={
           <RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />
         }
@@ -83,42 +103,15 @@ export default function InvoiceListScreen() {
         onEndReachedThreshold={0.4}
         ListHeaderComponent={
           <View style={styles.filters}>
-            <TextInput
-              onChangeText={setSearch}
-              placeholder="Search invoice or customer"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={search}
+            <SearchBar onChange={setSearch} placeholder="Search invoice or customer" value={search} />
+            <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
+            <StatusFilter
+              allLabel="All status"
+              labelOf={labelOf}
+              onChange={setStatus}
+              options={INVOICE_STATUSES}
+              value={status}
             />
-            <View style={styles.row}>
-              <TextInput
-                onChangeText={setFromDate}
-                placeholder="From YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={fromDate}
-              />
-              <TextInput
-                onChangeText={setToDate}
-                placeholder="To YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={toDate}
-              />
-            </View>
-            <View style={styles.chips}>
-              {[undefined, ...INVOICE_STATUSES].map((option) => (
-                <Pressable
-                  key={option ?? 'ALL'}
-                  onPress={() => setStatus(option)}
-                  style={[styles.chip, status === option ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, status === option ? styles.chipTextActive : null]}>
-                    {option ? labelOf(option) : 'All status'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
           </View>
         }
         ListEmptyComponent={
@@ -141,13 +134,42 @@ export default function InvoiceListScreen() {
         }
         renderItem={({ item }) => <InvoiceRow invoice={item} />}
       />
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/invoices/new' as Href)}
-        style={styles.fab}
+      <FilterModal
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setCustomer('');
+          setInvoiceNumber('');
+          setStatus(undefined);
+          setFromDate('');
+          setToDate('');
+          setDueFrom('');
+          setDueTo('');
+        }}
+        onClose={() => setFiltersOpen(false)}
+        visible={filtersOpen}
       >
-        <Text style={styles.fabText}>Create Invoice</Text>
-      </Pressable>
+        <SearchBar onChange={setCustomer} placeholder="Customer" value={customer} />
+        <SearchBar onChange={setInvoiceNumber} placeholder="Invoice number" value={invoiceNumber} />
+        <DateRangePicker
+          from={fromDate}
+          fromPlaceholder="From"
+          label="Invoice date"
+          onChangeFrom={setFromDate}
+          onChangeTo={setToDate}
+          to={toDate}
+          toPlaceholder="To"
+        />
+        <DateRangePicker
+          from={dueFrom}
+          fromPlaceholder="From"
+          label="Due date"
+          onChangeFrom={setDueFrom}
+          onChangeTo={setDueTo}
+          to={dueTo}
+          toPlaceholder="To"
+        />
+      </FilterModal>
+      <FabButton label="Create Invoice" onPress={() => router.push('/invoices/new' as Href)} />
     </View>
   );
 }
@@ -185,44 +207,6 @@ const styles = StyleSheet.create({
   filters: {
     gap: 10,
     marginBottom: 6,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  flex: {
-    flex: 1,
-  },
-  search: {
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    color: '#111827',
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#e5e7eb',
-  },
-  chipActive: {
-    backgroundColor: '#111827',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  chipTextActive: {
-    color: '#ffffff',
   },
   card: {
     backgroundColor: '#ffffff',
@@ -265,19 +249,5 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginVertical: 12,
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 20,
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    minHeight: 48,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  fabText: {
-    color: '#ffffff',
-    fontWeight: '700',
   },
 });

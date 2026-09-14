@@ -23,13 +23,14 @@ export class UpdateAttendanceDto {
   checkOut?: string;
 
   @IsOptional()
-  @IsIn(['PRESENT', 'ABSENT', 'LATE', 'HALF_DAY', 'ON_LEAVE'], {
-    message: 'status must be PRESENT, ABSENT, LATE, HALF_DAY or ON_LEAVE',
-  })
-  status?: Exclude<
-    AttendanceStatus,
-    typeof AttendanceStatus.LEAVE | typeof AttendanceStatus.HOLIDAY
-  >;
+  @IsIn(
+    ['PRESENT', 'ABSENT', 'LATE', 'HALF_DAY', 'ON_LEAVE', 'HOLIDAY'],
+    {
+      message:
+        'status must be PRESENT, ABSENT, LATE, HALF_DAY, ON_LEAVE or HOLIDAY',
+    },
+  )
+  status?: Exclude<AttendanceStatus, typeof AttendanceStatus.LEAVE>;
 
   @Transform(optionalTrim)
   @IsOptional()

@@ -6,7 +6,6 @@ export interface AttendanceEmployee {
   firstName: string;
   lastName: string;
   fullName: string;
-  department: string | null;
   jobTitle: string | null;
 }
 

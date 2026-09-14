@@ -212,8 +212,11 @@ describe('InvoicesService', () => {
       search: 'Acme',
       status: InvoiceStatus.DRAFT,
       customer: 'Acme',
+      invoiceNumber: 'INV-2026',
       fromDate: '2026-09-01',
       toDate: '2026-09-30',
+      dueFrom: '2026-09-15',
+      dueTo: '2026-09-30',
       page: 1,
       limit: 20,
     });
@@ -221,12 +224,16 @@ describe('InvoicesService', () => {
     const listCalls = prisma.invoice.findMany.mock.calls as Array<
       [{ where: { status: InvoiceStatus } }]
     >;
-    expect(listCalls[0][0].where.status).toBe(InvoiceStatus.DRAFT);
+    expect(listCalls.at(-1)?.[0].where.status).toBe(InvoiceStatus.DRAFT);
     expect(prisma.invoice.updateMany).toHaveBeenCalled();
   });
 
   it('marks overdue invoices in place', async () => {
     prisma.invoice.updateMany.mockResolvedValue({ count: 2 });
+    prisma.invoice.findMany.mockResolvedValue([
+      { id: 'inv-1', invoiceNumber: 'INV-1', customerName: 'Acme' },
+      { id: 'inv-2', invoiceNumber: 'INV-2', customerName: 'Beta' },
+    ]);
     await expect(service.markOverdueInvoices()).resolves.toBe(2);
   });
 });

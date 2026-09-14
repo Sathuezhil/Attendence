@@ -57,4 +57,18 @@ export class QueryInvoicesDto {
   @IsOptional()
   @IsDateString()
   toDate?: string;
+
+  @Transform(optionalTrim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  invoiceNumber?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueTo?: string;
 }

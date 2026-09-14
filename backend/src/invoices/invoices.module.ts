@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
+import { ExportFormatModule } from '../exports/export-format.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { InvoiceCalculationService } from './invoice-calculation.service';
 import { InvoiceOverdueScheduler } from './invoice-overdue.scheduler';
 import { InvoicesController } from './invoices.controller';
 import { InvoicesService } from './invoices.service';
 
 @Module({
+  imports: [ExportFormatModule, NotificationsModule],
   controllers: [InvoicesController],
   providers: [
     InvoicesService,

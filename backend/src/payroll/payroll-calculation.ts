@@ -36,16 +36,30 @@ export function resolveWorkingDaysPerMonth(
     return Math.floor(value);
   }
 
-  if (
-    value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    typeof (value as { days?: unknown }).days === 'number'
-  ) {
-    return Math.max(1, Math.floor((value as { days: number }).days));
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const input = value as {
+      days?: unknown;
+      workingDaysPerMonth?: unknown;
+    };
+    if (typeof input.workingDaysPerMonth === 'number') {
+      return Math.max(1, Math.floor(input.workingDaysPerMonth));
+    }
+    if (typeof input.days === 'number') {
+      return Math.max(1, Math.floor(input.days));
+    }
   }
 
   return Math.max(1, Math.floor(fallback) || DEFAULT_WORKING_DAYS_PER_MONTH);
+}
+
+export function resolveOvertimeEnabled(value: unknown): boolean {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const input = value as { overtimeEnabled?: unknown };
+    if (typeof input.overtimeEnabled === 'boolean') {
+      return input.overtimeEnabled;
+    }
+  }
+  return true;
 }
 
 export function monthDateRange(

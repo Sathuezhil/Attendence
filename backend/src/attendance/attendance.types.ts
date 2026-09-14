@@ -7,6 +7,7 @@ export const PUBLIC_ATTENDANCE_STATUSES = [
   AttendanceStatus.LATE,
   AttendanceStatus.HALF_DAY,
   AttendanceStatus.ON_LEAVE,
+  AttendanceStatus.HOLIDAY,
 ] as const;
 
 export type PublicAttendanceStatus =
@@ -18,7 +19,6 @@ export interface AttendanceEmployeeSummary {
   firstName: string;
   lastName: string;
   fullName: string;
-  department: string | null;
   jobTitle: string | null;
 }
 

@@ -6,6 +6,8 @@ export interface WorkingHours {
   lateThresholdMinutes: number;
   halfDayMinutes: number;
   timezone: string;
+  breakDurationMinutes: number;
+  workingDays: number[];
 }
 
 export const DEFAULT_WORKING_HOURS: WorkingHours = {
@@ -14,6 +16,8 @@ export const DEFAULT_WORKING_HOURS: WorkingHours = {
   lateThresholdMinutes: 15,
   halfDayMinutes: 240,
   timezone: 'UTC',
+  breakDurationMinutes: 60,
+  workingDays: [1, 2, 3, 4, 5],
 };
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -50,6 +54,15 @@ export function parseWorkingHours(value: unknown): WorkingHours {
     typeof input.timezone === 'string' && input.timezone.trim().length > 0
       ? input.timezone.trim()
       : DEFAULT_WORKING_HOURS.timezone;
+  const breakDurationMinutes = positiveInt(
+    input.breakDurationMinutes,
+    DEFAULT_WORKING_HOURS.breakDurationMinutes,
+  );
+  const workingDays = Array.isArray(input.workingDays)
+    ? input.workingDays.filter(
+        (day): day is number => typeof day === 'number' && day >= 0 && day <= 6,
+      )
+    : DEFAULT_WORKING_HOURS.workingDays;
 
   return {
     start,
@@ -57,6 +70,9 @@ export function parseWorkingHours(value: unknown): WorkingHours {
     lateThresholdMinutes,
     halfDayMinutes,
     timezone,
+    breakDurationMinutes,
+    workingDays:
+      workingDays.length > 0 ? workingDays : DEFAULT_WORKING_HOURS.workingDays,
   };
 }
 
@@ -102,7 +118,11 @@ export function calculateAttendanceMetrics(
     (checkIn.getTime() - start.getTime()) / 60_000,
   );
   const lateMinutes = Math.max(0, minutesAfterStart);
-  const workingMinutes = checkOut ? durationMinutes(checkIn, checkOut) : null;
+  const rawWorking = checkOut ? durationMinutes(checkIn, checkOut) : null;
+  const workingMinutes =
+    rawWorking === null
+      ? null
+      : Math.max(0, rawWorking - hours.breakDurationMinutes);
 
   return {
     lateMinutes,
@@ -118,10 +138,6 @@ export function deriveStatus(
 ): AttendanceStatus {
   if (workingMinutes !== null && workingMinutes < hours.halfDayMinutes) {
     return AttendanceStatus.HALF_DAY;
-  }
-
-  if (lateMinutes > hours.lateThresholdMinutes) {
-    return AttendanceStatus.LATE;
   }
 
   return AttendanceStatus.PRESENT;

@@ -1,3 +1,4 @@
+import { LeaveRequestStatus } from '@prisma/client';
 import {
   Injectable,
   Logger,
@@ -6,9 +7,11 @@ import {
 import { AttendanceService } from '../attendance/attendance.service';
 import { calendarDate } from '../attendance/working-hours';
 import { DocumentsService } from '../documents/documents.service';
+import { OPEN_INVOICE_STATUSES } from '../invoices/invoice-status';
 import { DocumentExpiryService } from '../notifications/document-expiry.service';
 import { ExpiryAlertsResponse } from '../notifications/notifications.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { roundMoney } from '../reports/report-math';
 import { DashboardSummaryDto } from './dto/dashboard-summary.dto';
 import {
   DashboardActivityDto,
@@ -31,13 +34,25 @@ export class DashboardService {
       const hours = await this.attendanceService.getWorkingHours();
       const today = calendarDate(hours.timezone);
 
-      const [employees, attendance, documents] = await Promise.all([
-        this.prisma.employee.count({
-          where: { deletedAt: null },
-        }),
-        this.attendanceService.getSummaryCounts(today),
-        this.documentsService.getExpirySummary(),
-      ]);
+      const [employees, attendance, documents, pendingLeave, outstanding] =
+        await Promise.all([
+          this.prisma.employee.count({
+            where: { deletedAt: null },
+          }),
+          this.attendanceService.getSummaryCounts(today),
+          this.documentsService.getExpirySummary(),
+          this.prisma.leave.count({
+            where: {
+              status: LeaveRequestStatus.PENDING,
+              employee: { deletedAt: null },
+            },
+          }),
+          this.prisma.invoice.aggregate({
+            where: { status: { in: OPEN_INVOICE_STATUSES } },
+            _count: { _all: true },
+            _sum: { totalAmount: true },
+          }),
+        ]);
 
       return {
         employees,
@@ -48,6 +63,9 @@ export class DashboardService {
         lateToday: attendance.late,
         documentsExpired: documents.expired,
         documentsExpiringSoon: documents.expiringSoon,
+        pendingLeave,
+        outstandingInvoices: outstanding._count._all,
+        outstandingInvoiceAmount: roundMoney(outstanding._sum.totalAmount ?? 0),
       };
     } catch (error) {
       this.logger.error('Failed to load dashboard summary', error);

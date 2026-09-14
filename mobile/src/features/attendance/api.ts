@@ -8,9 +8,9 @@ import {
 
 export interface TodayAttendanceParams {
   date?: string;
+  employeeId?: string;
   search?: string;
   status?: AttendanceStatus;
-  department?: string;
   page?: number;
   limit?: number;
 }
@@ -23,7 +23,9 @@ export interface AttendanceHistoryParams {
   startDate?: string;
   endDate?: string;
   status?: AttendanceStatus;
-  department?: string;
+  search?: string;
+  lateOnly?: boolean;
+  absentOnly?: boolean;
 }
 
 function toQuery(
@@ -66,5 +68,15 @@ export function checkOutAttendance(id: string, checkOut?: string): Promise<Atten
   return apiRequest<AttendanceRecord>(`/attendance/${id}/check-out`, {
     method: 'POST',
     body: JSON.stringify({ checkOut }),
+  });
+}
+
+export function markDayAttendance(
+  employeeId: string,
+  status: AttendanceStatus,
+): Promise<AttendanceRecord> {
+  return apiRequest<AttendanceRecord>('/attendance/mark-day', {
+    method: 'POST',
+    body: JSON.stringify({ employeeId, status }),
   });
 }

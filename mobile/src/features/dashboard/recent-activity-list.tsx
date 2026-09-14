@@ -1,11 +1,12 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { colors, radius, shadow } from '@/theme';
 import { DashboardActivity } from './types';
 
 export function RecentActivityList({ activities }: { activities: DashboardActivity[] }) {
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>Recent Activity</Text>
-      <View style={styles.card}>
+      <View style={[styles.card, shadow]}>
         {activities.length === 0 ? (
           <Text style={styles.empty}>No recent activity</Text>
         ) : (
@@ -34,11 +35,11 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 16,
     gap: 12,
   },
@@ -62,7 +63,7 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 15,
-    color: '#111827',
+    color: colors.text,
   },
   time: {
     fontSize: 13,

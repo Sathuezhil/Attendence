@@ -12,7 +12,10 @@ export default function RootLayout() {
         <Stack
           screenOptions={{
             headerShadowVisible: false,
-            headerTitleStyle: { fontWeight: '600' },
+            headerTitleStyle: { fontWeight: '600', color: '#0c2a3d' },
+            headerTintColor: '#0e5a72',
+            headerStyle: { backgroundColor: '#eaf4f8' },
+            contentStyle: { backgroundColor: '#eaf4f8' },
           }}
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -25,6 +28,10 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="payroll" options={{ headerShown: false }} />
           <Stack.Screen name="invoices" options={{ headerShown: false }} />
+          <Stack.Screen name="reports" options={{ headerShown: false }} />
+          <Stack.Screen name="search" options={{ title: 'Search' }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="profile" options={{ headerShown: false }} />
         </Stack>
       </AuthProvider>
     </QueryClientProvider>

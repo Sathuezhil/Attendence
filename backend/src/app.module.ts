@@ -16,7 +16,10 @@ import { PayrollModule } from './payroll/payroll.module';
 import { PassportsModule } from './passports/passports.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './common/storage/storage.module';
+import { ExportsModule } from './exports/exports.module';
 import { ReportsModule } from './reports/reports.module';
+import { SettingsModule } from './settings/settings.module';
+import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
 import { VisasModule } from './visas/visas.module';
 
@@ -24,7 +27,10 @@ import { VisasModule } from './visas/visas.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath:
+        process.env.NODE_ENV === 'production'
+          ? ['.env.production', '.env']
+          : ['.env', '.env.development'],
       load: [configuration],
     }),
     ScheduleModule.forRoot(),
@@ -40,9 +46,12 @@ import { VisasModule } from './visas/visas.module';
     VisasModule,
     DocumentsModule,
     NotificationsModule,
+    SettingsModule,
     PayrollModule,
     InvoicesModule,
     ReportsModule,
+    SearchModule,
+    ExportsModule,
     BackupsModule,
     DashboardModule,
   ],

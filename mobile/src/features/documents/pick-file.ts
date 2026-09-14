@@ -10,6 +10,20 @@ export function isAllowedDocumentName(name: string): boolean {
   return EXTENSIONS.some((extension) => lower.endsWith(extension));
 }
 
+function mimeFromName(name: string, fallback: string | null): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.pdf')) {
+    return 'application/pdf';
+  }
+  if (lower.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
+  return fallback && fallback.length > 0 ? fallback : 'application/octet-stream';
+}
+
 export async function pickDocumentFile(): Promise<PickedDocument | null> {
   if (Platform.OS === 'web' && typeof document !== 'undefined') {
     return pickFromWebInput();
@@ -26,10 +40,11 @@ export async function pickDocumentFile(): Promise<PickedDocument | null> {
   }
 
   const asset = result.assets[0];
+  const name = asset.name ?? 'document';
   return {
     uri: asset.uri,
-    name: asset.name ?? 'document',
-    mimeType: asset.mimeType ?? null,
+    name,
+    mimeType: mimeFromName(name, asset.mimeType ?? null),
     size: asset.size,
   };
 }

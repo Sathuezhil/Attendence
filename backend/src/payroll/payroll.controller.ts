@@ -3,12 +3,17 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
+import { PDF_MIME } from '../exports/export.constants';
+import { toDownload } from '../exports/export-file';
+import { periodLabel, safeFileName } from '../exports/export-format';
+import { PdfService } from '../exports/pdf.service';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { MarkPaidDto } from './dto/mark-paid.dto';
 import { QueryPayrollDto } from './dto/query-payroll.dto';
@@ -22,7 +27,10 @@ import {
 
 @Controller()
 export class PayrollController {
-  constructor(private readonly payrollService: PayrollService) {}
+  constructor(
+    private readonly payrollService: PayrollService,
+    private readonly pdfService: PdfService,
+  ) {}
 
   @Post('payroll/preview')
   preview(@Body() dto: CreatePayrollDto): Promise<PayrollPreview> {
@@ -44,6 +52,18 @@ export class PayrollController {
     @Param('employeeId', ParseUUIDPipe) employeeId: string,
   ): Promise<PayrollResponse[]> {
     return this.payrollService.findForEmployee(employeeId);
+  }
+
+  @Get('payroll/:id/payslip')
+  @Header('Cache-Control', 'private, no-store')
+  async payslip(@Param('id', ParseUUIDPipe) id: string) {
+    const payslip = await this.payrollService.getPayslip(id);
+    const pdf = await this.pdfService.payslip(payslip);
+    return toDownload(
+      pdf,
+      `${safeFileName(`payslip-${payslip.employeeCode}-${periodLabel(payslip.payrollMonth, payslip.payrollYear)}`)}.pdf`,
+      PDF_MIME,
+    );
   }
 
   @Get('payroll/:id')

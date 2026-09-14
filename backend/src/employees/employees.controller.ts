@@ -46,9 +46,7 @@ export class EmployeesController {
 
   @HttpCode(HttpStatus.OK)
   @Delete(':id')
-  deactivate(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<EmployeeResponse> {
-    return this.employeesService.deactivate(id);
+  remove(@Param('id', ParseUUIDPipe) id: string): Promise<EmployeeResponse> {
+    return this.employeesService.remove(id);
   }
 }

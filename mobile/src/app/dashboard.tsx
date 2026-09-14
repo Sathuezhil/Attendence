@@ -9,9 +9,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/auth-context';
 import { DashboardHeader } from '@/features/dashboard/dashboard-header';
+import { DashboardSearchBar } from '@/features/dashboard/dashboard-search-bar';
 import { ExpiryAlerts } from '@/features/dashboard/expiry-alerts';
 import { QuickActions } from '@/features/dashboard/quick-actions';
 import { RecentActivityList } from '@/features/dashboard/recent-activity-list';
@@ -78,25 +80,35 @@ export default function DashboardScreen() {
   if (!isReady || !isAuthenticated || !user) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#111827" />
+        <ActivityIndicator size="large" color="#0e5a72" />
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <StatusBar style="light" />
+      <View style={styles.hero}>
+        <View pointerEvents="none" style={styles.heroDecor}>
+          <View style={styles.heroGlow} />
+          <View style={styles.heroOrb} />
+        </View>
         <DashboardHeader
           user={user}
           unreadCount={unreadQuery.data?.count ?? 0}
           onOpenNotifications={() => router.push('/notifications' as Href)}
+          onOpenProfile={() => router.push('/profile' as Href)}
+          onOpenSettings={() => router.push('/settings' as Href)}
           onLogout={() => void handleLogout()}
         />
-
+        <QuickActions />
+      </View>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <DashboardSearchBar />
         <View style={styles.section}>
           {summaryQuery.isPending ? (
             <View style={styles.panel}>
-              <ActivityIndicator color="#111827" />
+              <ActivityIndicator color="#0e5a72" />
               <Text style={styles.panelText}>Loading summary…</Text>
             </View>
           ) : null}
@@ -119,7 +131,7 @@ export default function DashboardScreen() {
 
         {alertsQuery.isPending ? (
           <View style={styles.panel}>
-            <ActivityIndicator color="#111827" />
+            <ActivityIndicator color="#0e5a72" />
             <Text style={styles.panelText}>Loading expiry alerts…</Text>
           </View>
         ) : null}
@@ -132,11 +144,9 @@ export default function DashboardScreen() {
 
         {alertsQuery.data ? <ExpiryAlerts alerts={alertsQuery.data} /> : null}
 
-        <QuickActions />
-
         {activityQuery.isPending ? (
           <View style={styles.panel}>
-            <ActivityIndicator color="#111827" />
+            <ActivityIndicator color="#0e5a72" />
             <Text style={styles.panelText}>Loading activity…</Text>
           </View>
         ) : null}
@@ -167,15 +177,50 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f4f6f8',
+    backgroundColor: '#eaf4f8',
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#f4f6f8',
+    backgroundColor: '#eaf4f8',
+    overflow: 'visible',
+  },
+  hero: {
+    backgroundColor: '#0c4a62',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    zIndex: 20,
+    overflow: 'visible',
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  heroDecor: {
+    ...StyleSheet.absoluteFill,
+    overflow: 'hidden',
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  heroGlow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(31, 182, 166, 0.28)',
+    right: -70,
+    top: -80,
+  },
+  heroOrb: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    left: -40,
+    bottom: -50,
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 20,
     paddingBottom: 32,
     gap: 24,
   },
@@ -184,24 +229,24 @@ const styles = StyleSheet.create({
   },
   panel: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     gap: 10,
     alignItems: 'flex-start',
   },
   panelText: {
     fontSize: 14,
-    color: '#4b5563',
+    color: '#3d4d5c',
   },
   errorText: {
     fontSize: 14,
-    color: '#991b1b',
+    color: '#9f1239',
   },
   retryButton: {
     minHeight: 36,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: '#111827',
+    backgroundColor: '#0e5a72',
     alignItems: 'center',
     justifyContent: 'center',
   },

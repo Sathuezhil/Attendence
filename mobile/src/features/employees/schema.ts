@@ -14,11 +14,10 @@ export const employeeFormSchema = z.object({
     .string()
     .optional()
     .refine((value) => isEmpty(value) || /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''), {
-      message: 'Use YYYY-MM-DD',
+      message: 'Select a valid date',
     }),
   gender: z.enum(genders).optional(),
   nationality: z.string().optional(),
-  address: z.string().optional(),
   email: z
     .string()
     .optional()
@@ -39,12 +38,11 @@ export const employeeFormSchema = z.object({
     }),
   employeeCode: z.string().trim().min(2, 'Employee code is required'),
   jobTitle: z.string().optional(),
-  department: z.string().optional(),
   joiningDate: z
     .string()
     .optional()
     .refine((value) => isEmpty(value) || /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''), {
-      message: 'Use YYYY-MM-DD',
+      message: 'Select a valid date',
     }),
   employmentStatus: z.enum(employmentStatuses),
   basicSalary: z

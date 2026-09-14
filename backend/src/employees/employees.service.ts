@@ -37,9 +37,7 @@ export class EmployeesService {
           dateOfBirth,
           gender: dto.gender,
           nationality: emptyToNull(dto.nationality) ?? null,
-          address: emptyToNull(dto.address) ?? null,
           jobTitle: emptyToNull(dto.jobTitle) ?? null,
-          department: emptyToNull(dto.department) ?? null,
           joiningDate,
           status: dto.employmentStatus ?? EmployeeStatus.ACTIVE,
           salary: dto.basicSalary ?? null,
@@ -100,9 +98,7 @@ export class EmployeesService {
           dateOfBirth,
           gender: dto.gender,
           nationality: emptyToNull(dto.nationality),
-          address: emptyToNull(dto.address),
           jobTitle: emptyToNull(dto.jobTitle),
-          department: emptyToNull(dto.department),
           joiningDate,
           status: dto.employmentStatus,
           salary: dto.basicSalary,
@@ -115,7 +111,7 @@ export class EmployeesService {
     }
   }
 
-  async deactivate(id: string): Promise<EmployeeResponse> {
+  async remove(id: string): Promise<EmployeeResponse> {
     await this.findActiveOrThrow(id);
 
     const employee = await this.prisma.employee.update({
@@ -143,15 +139,26 @@ export class EmployeesService {
 
   private buildListWhere(query: QueryEmployeesDto): Prisma.EmployeeWhereInput {
     const search = query.search?.trim();
+    const joiningFrom = parseOptionalDate(query.joiningFrom, 'joiningFrom');
+    const joiningTo = parseOptionalDate(query.joiningTo, 'joiningTo');
+    if (
+      joiningFrom &&
+      joiningTo &&
+      joiningTo.getTime() < joiningFrom.getTime()
+    ) {
+      throw new BadRequestException('joiningTo cannot be before joiningFrom');
+    }
+
     const where: Prisma.EmployeeWhereInput = {
       deletedAt: null,
       status: query.employmentStatus,
-      department: query.department
-        ? { equals: query.department, mode: 'insensitive' }
-        : undefined,
       jobTitle: query.jobTitle
         ? { contains: query.jobTitle, mode: 'insensitive' }
         : undefined,
+      joiningDate: {
+        gte: joiningFrom ?? undefined,
+        lte: joiningTo ?? undefined,
+      },
     };
 
     if (search) {
@@ -162,7 +169,6 @@ export class EmployeesService {
         { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } },
         { jobTitle: { contains: search, mode: 'insensitive' } },
-        { department: { contains: search, mode: 'insensitive' } },
       ];
     }
 

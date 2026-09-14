@@ -4,6 +4,8 @@ import { DashboardService } from './dashboard.service';
 describe('DashboardService', () => {
   const prisma = {
     employee: { count: jest.fn() },
+    leave: { count: jest.fn() },
+    invoice: { aggregate: jest.fn() },
     auditLog: { findMany: jest.fn() },
   };
 
@@ -43,6 +45,11 @@ describe('DashboardService', () => {
       urgentDays: 7,
       warningDays: 30,
     });
+    prisma.leave.count.mockResolvedValue(2);
+    prisma.invoice.aggregate.mockResolvedValue({
+      _count: { _all: 3 },
+      _sum: { totalAmount: 1250.5 },
+    });
     service = new DashboardService(
       prisma as never,
       attendanceService as never,
@@ -72,6 +79,9 @@ describe('DashboardService', () => {
       lateToday: 0,
       documentsExpired: 1,
       documentsExpiringSoon: 2,
+      pendingLeave: 2,
+      outstandingInvoices: 3,
+      outstandingInvoiceAmount: 1250.5,
     });
 
     expect(prisma.employee.count).toHaveBeenCalledWith({

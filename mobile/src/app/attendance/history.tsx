@@ -3,11 +3,9 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -21,6 +19,12 @@ import {
 } from '@/features/attendance/format';
 import { AttendanceRecord, AttendanceStatus } from '@/features/attendance/types';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { DateRangePicker } from '@/features/filters/date-range-picker';
+import { FilterButton } from '@/features/filters/filter-button';
+import { FilterModal } from '@/features/filters/filter-modal';
+import { SearchBar } from '@/features/filters/search-bar';
+import { StatusFilter } from '@/features/filters/status-filter';
+import { useDebouncedValue } from '@/features/filters/use-debounced-value';
 import { ApiError } from '@/lib/api';
 
 export default function AttendanceHistoryScreen() {
@@ -29,14 +33,26 @@ export default function AttendanceHistoryScreen() {
   const employeeId = Array.isArray(params.employeeId)
     ? params.employeeId[0]
     : params.employeeId;
-  const [date, setDate] = useState('');
+  const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [department, setDepartment] = useState('');
   const [status, setStatus] = useState<AttendanceStatus | undefined>();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search);
+  const filterCount = [startDate, endDate, status].filter(Boolean).length;
 
   const query = useInfiniteQuery({
-    queryKey: ['attendance', 'history', { employeeId, date, startDate, endDate, status, department }],
+    queryKey: [
+      'attendance',
+      'history',
+      {
+        employeeId,
+        search: debouncedSearch,
+        startDate,
+        endDate,
+        status,
+      },
+    ],
     enabled: isReady && isAuthenticated,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
@@ -44,11 +60,10 @@ export default function AttendanceHistoryScreen() {
         page: pageParam,
         limit: 20,
         employeeId,
-        date: date.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         startDate: startDate.trim() || undefined,
         endDate: endDate.trim() || undefined,
         status,
-        department: department.trim() || undefined,
       }),
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
@@ -58,7 +73,6 @@ export default function AttendanceHistoryScreen() {
     () => query.data?.pages.flatMap((page) => page.data) ?? [],
     [query.data],
   );
-  const statusFilters = useMemo(() => [undefined, ...attendanceStatuses], []);
 
   if (!isReady || !isAuthenticated) {
     return (
@@ -85,52 +99,15 @@ export default function AttendanceHistoryScreen() {
         ListHeaderComponent={
           <View style={styles.filters}>
             {employeeId ? <Text style={styles.scope}>Showing one employee</Text> : null}
-            <TextInput
-              onChangeText={setDate}
-              placeholder="Date YYYY-MM-DD"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={date}
+            <SearchBar onChange={setSearch} placeholder="Search employee" value={search} />
+            <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
+            <StatusFilter
+              allLabel="All"
+              labelOf={statusLabel}
+              onChange={setStatus}
+              options={attendanceStatuses}
+              value={status}
             />
-            <View style={styles.row}>
-              <TextInput
-                onChangeText={setStartDate}
-                placeholder="Start date"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={startDate}
-              />
-              <TextInput
-                onChangeText={setEndDate}
-                placeholder="End date"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={endDate}
-              />
-            </View>
-            <TextInput
-              onChangeText={setDepartment}
-              placeholder="Department"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={department}
-            />
-            <View style={styles.chips}>
-              {statusFilters.map((option) => {
-                const selected = status === option;
-                return (
-                  <Pressable
-                    key={option ?? 'ALL'}
-                    onPress={() => setStatus(option)}
-                    style={[styles.chip, selected ? styles.chipActive : null]}
-                  >
-                    <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>
-                      {option ? statusLabel(option) : 'All'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
           </View>
         }
         ListEmptyComponent={
@@ -151,6 +128,23 @@ export default function AttendanceHistoryScreen() {
         }
         renderItem={({ item }) => <HistoryRow record={item} hideEmployee={Boolean(employeeId)} />}
       />
+      <FilterModal
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setStartDate('');
+          setEndDate('');
+          setStatus(undefined);
+        }}
+        onClose={() => setFiltersOpen(false)}
+        visible={filtersOpen}
+      >
+        <DateRangePicker
+          from={startDate}
+          onChangeFrom={setStartDate}
+          onChangeTo={setEndDate}
+          to={endDate}
+        />
+      </FilterModal>
     </View>
   );
 }
@@ -202,44 +196,6 @@ const styles = StyleSheet.create({
   scope: {
     color: '#1e40af',
     fontWeight: '700',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  flex: {
-    flex: 1,
-  },
-  search: {
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    color: '#111827',
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#e5e7eb',
-  },
-  chipActive: {
-    backgroundColor: '#111827',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  chipTextActive: {
-    color: '#ffffff',
   },
   card: {
     backgroundColor: '#ffffff',

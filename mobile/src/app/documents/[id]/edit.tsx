@@ -17,6 +17,7 @@ import { fetchDocument, updateDocument } from '@/features/documents/api';
 import { labelOf } from '@/features/documents/format';
 import { DOCUMENT_TYPES, DocumentType } from '@/features/documents/types';
 import { ApiError } from '@/lib/api';
+import { DateField } from '@/ui/date-field';
 
 export default function EditDocumentScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
@@ -113,21 +114,9 @@ export default function EditDocumentScreen() {
             value={documentNumber}
           />
           <Text style={styles.label}>Issue date</Text>
-          <TextInput
-            onChangeText={setIssueDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={issueDate}
-          />
+          <DateField onChange={setIssueDate} placeholder="Select issue date" value={issueDate} />
           <Text style={styles.label}>Expiry date</Text>
-          <TextInput
-            onChangeText={setExpiryDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={expiryDate}
-          />
+          <DateField onChange={setExpiryDate} placeholder="Select expiry date" value={expiryDate} />
           <Text style={styles.label}>Notes</Text>
           <TextInput
             multiline

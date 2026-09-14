@@ -41,7 +41,7 @@ describe('working hours', () => {
     );
 
     expect(result.lateMinutes).toBe(20);
-    expect(result.status).toBe(AttendanceStatus.LATE);
+    expect(result.status).toBe(AttendanceStatus.PRESENT);
   });
 
   it('calculates working minutes from check-out', () => {
@@ -54,7 +54,7 @@ describe('working hours', () => {
       DEFAULT_WORKING_HOURS,
     );
 
-    expect(result.workingMinutes).toBe(540);
+    expect(result.workingMinutes).toBe(480);
     expect(result.status).toBe(AttendanceStatus.PRESENT);
   });
 
@@ -74,6 +74,6 @@ describe('working hours', () => {
       DEFAULT_WORKING_HOURS,
     );
 
-    expect(result.workingMinutes).toBe(480);
+    expect(result.workingMinutes).toBe(420);
   });
 });

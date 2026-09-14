@@ -1,5 +1,13 @@
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 const optionalTrim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -23,11 +31,6 @@ export class QueryEmployeesDto {
   @IsString()
   search?: string;
 
-  @Transform(optionalTrim)
-  @IsOptional()
-  @IsString()
-  department?: string;
-
   @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE', 'TERMINATED', 'ON_LEAVE'])
   employmentStatus?: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | 'ON_LEAVE';
@@ -36,4 +39,12 @@ export class QueryEmployeesDto {
   @IsOptional()
   @IsString()
   jobTitle?: string;
+
+  @IsOptional()
+  @IsDateString()
+  joiningFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  joiningTo?: string;
 }

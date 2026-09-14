@@ -19,6 +19,7 @@ import { isAllowedDocumentName, pickDocumentFile } from '@/features/documents/pi
 import { DOCUMENT_TYPES, DocumentType, PickedDocument } from '@/features/documents/types';
 import { fetchEmployees } from '@/features/employees/api';
 import { ApiError } from '@/lib/api';
+import { DateField } from '@/ui/date-field';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -176,21 +177,9 @@ export default function UploadDocumentScreen() {
             value={documentNumber}
           />
           <Text style={styles.label}>Issue date</Text>
-          <TextInput
-            onChangeText={setIssueDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={issueDate}
-          />
+          <DateField onChange={setIssueDate} placeholder="Select issue date" value={issueDate} />
           <Text style={styles.label}>Expiry date</Text>
-          <TextInput
-            onChangeText={setExpiryDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={expiryDate}
-          />
+          <DateField onChange={setExpiryDate} placeholder="Select expiry date" value={expiryDate} />
           <Text style={styles.label}>Notes</Text>
           <TextInput
             multiline

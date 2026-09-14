@@ -1,5 +1,5 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,49 +12,82 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
 import { fetchDocuments } from '@/features/documents/api';
+import { labelOf, statusColor, statusLabel } from '@/features/documents/format';
+import { DateRangePicker } from '@/features/filters/date-range-picker';
+import { FilterButton } from '@/features/filters/filter-button';
+import { FilterModal } from '@/features/filters/filter-modal';
+import { PaginationBar } from '@/features/filters/pagination-bar';
+import { SearchBar } from '@/features/filters/search-bar';
+import { StatusFilter } from '@/features/filters/status-filter';
+import { useDebouncedValue } from '@/features/filters/use-debounced-value';
+import { usePagedFilters } from '@/features/filters/use-paged-filters';
 import {
-  documentTypeFilters,
-  labelOf,
-  statusColor,
-  statusLabel,
-} from '@/features/documents/format';
-import { DocumentExpiryStatus, DocumentListItem, DocumentType } from '@/features/documents/types';
+  DOCUMENT_TYPES,
+  DocumentExpiryStatus,
+  DocumentListItem,
+  DocumentType,
+} from '@/features/documents/types';
 import { ApiError } from '@/lib/api';
+import { FabButton, useSafeBottomOffset } from '@/ui/fab-button';
 
-type ExpiryFilter = 'ALL' | 'EXPIRED' | 'EXPIRING';
+const EXPIRY_FILTERS = ['VALID', 'EXPIRING_SOON', 'EXPIRED'] as const;
 
 export default function DocumentsListScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
+  const listBottom = useSafeBottomOffset(96);
   const params = useLocalSearchParams<{
     employeeId?: string | string[];
     expired?: string | string[];
     expiring?: string | string[];
   }>();
   const employeeId = first(params.employeeId);
-  const initialExpiry: ExpiryFilter = first(params.expired)
+  const initialExpiry = first(params.expired)
     ? 'EXPIRED'
     : first(params.expiring)
-      ? 'EXPIRING'
-      : 'ALL';
+      ? 'EXPIRING_SOON'
+      : undefined;
 
+  const [search, setSearch] = useState('');
   const [documentType, setDocumentType] = useState<DocumentType | undefined>();
-  const [expiryFilter, setExpiryFilter] = useState<ExpiryFilter>(initialExpiry);
+  const [expiryStatus, setExpiryStatus] = useState<(typeof EXPIRY_FILTERS)[number] | undefined>(
+    initialExpiry,
+  );
+  const [expiryFrom, setExpiryFrom] = useState('');
+  const [expiryTo, setExpiryTo] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search);
+  const filterKey = JSON.stringify({
+    employeeId,
+    search: debouncedSearch,
+    documentType,
+    expiryStatus,
+    expiryFrom,
+    expiryTo,
+  });
+  const { page, setPage } = usePagedFilters(filterKey);
+  const filterCount = [documentType, expiryStatus, expiryFrom, expiryTo].filter(Boolean).length;
 
   const query = useQuery({
-    queryKey: ['documents', { employeeId, documentType, expiryFilter }],
+    queryKey: [
+      'documents',
+      { employeeId, search: debouncedSearch, documentType, expiryStatus, expiryFrom, expiryTo, page },
+    ],
     enabled: isReady && isAuthenticated,
     queryFn: () =>
       fetchDocuments({
         employeeId,
+        search: debouncedSearch.trim() || undefined,
         documentType,
-        expired: expiryFilter === 'EXPIRED' ? true : undefined,
-        expiringWithin: expiryFilter === 'EXPIRING' ? 30 : undefined,
-        limit: 50,
+        expiryStatus,
+        expiryFrom: expiryFrom.trim() || undefined,
+        expiryTo: expiryTo.trim() || undefined,
+        page,
+        limit: 20,
       }),
   });
 
   const records = query.data?.data ?? [];
-  const expiryFilters = useMemo(() => ['ALL', 'EXPIRED', 'EXPIRING'] as const, []);
+  const totalPages = query.data?.totalPages ?? 0;
 
   if (!isReady || !isAuthenticated) {
     return (
@@ -69,39 +102,24 @@ export default function DocumentsListScreen() {
       <FlatList
         data={records}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: listBottom }]}
         refreshControl={
           <RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />
         }
         ListHeaderComponent={
           <View style={styles.filters}>
             {employeeId ? <Text style={styles.scope}>Showing one employee</Text> : null}
-            <View style={styles.chips}>
-              {documentTypeFilters.map((option) => (
-                <Pressable
-                  key={option ?? 'ALL_TYPE'}
-                  onPress={() => setDocumentType(option)}
-                  style={[styles.chip, documentType === option ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, documentType === option ? styles.chipTextActive : null]}>
-                    {option ? labelOf(option) : 'All types'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.chips}>
-              {expiryFilters.map((option) => (
-                <Pressable
-                  key={option}
-                  onPress={() => setExpiryFilter(option)}
-                  style={[styles.chip, expiryFilter === option ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, expiryFilter === option ? styles.chipTextActive : null]}>
-                    {option === 'ALL' ? 'All expiry' : option === 'EXPIRED' ? 'Expired' : 'Expiring soon'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <SearchBar onChange={setSearch} placeholder="Search employee" value={search} />
+            <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
+            <StatusFilter
+              allLabel="All expiry"
+              labelOf={(option) =>
+                option === 'EXPIRING_SOON' ? 'Expiring soon' : labelOf(option)
+              }
+              onChange={setExpiryStatus}
+              options={EXPIRY_FILTERS}
+              value={expiryStatus}
+            />
           </View>
         }
         ListEmptyComponent={
@@ -117,18 +135,44 @@ export default function DocumentsListScreen() {
             <Text style={styles.empty}>No documents found</Text>
           )
         }
+        ListFooterComponent={<PaginationBar onPage={setPage} page={page} totalPages={totalPages} />}
         renderItem={({ item }) => <DocumentCard record={item} />}
       />
-      <Pressable
+      <FilterModal
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setDocumentType(undefined);
+          setExpiryStatus(undefined);
+          setExpiryFrom('');
+          setExpiryTo('');
+        }}
+        onClose={() => setFiltersOpen(false)}
+        visible={filtersOpen}
+      >
+        <StatusFilter
+          allLabel="All types"
+          labelOf={labelOf}
+          onChange={setDocumentType}
+          options={DOCUMENT_TYPES}
+          value={documentType}
+        />
+        <DateRangePicker
+          from={expiryFrom}
+          fromPlaceholder="Expiry from"
+          onChangeFrom={setExpiryFrom}
+          onChangeTo={setExpiryTo}
+          to={expiryTo}
+          toPlaceholder="Expiry to"
+        />
+      </FilterModal>
+      <FabButton
+        label="Upload Document"
         onPress={() =>
           router.push(
             (employeeId ? `/documents/new?employeeId=${employeeId}` : '/documents/new') as Href,
           )
         }
-        style={styles.fab}
-      >
-        <Text style={styles.fabText}>Upload Document</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -176,28 +220,6 @@ const styles = StyleSheet.create({
     color: '#1e40af',
     fontWeight: '700',
   },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#e5e7eb',
-  },
-  chipActive: {
-    backgroundColor: '#111827',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  chipTextActive: {
-    color: '#ffffff',
-  },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -236,19 +258,5 @@ const styles = StyleSheet.create({
   error: {
     color: '#991b1b',
     textAlign: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 20,
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    minHeight: 48,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  fabText: {
-    color: '#ffffff',
-    fontWeight: '700',
   },
 });

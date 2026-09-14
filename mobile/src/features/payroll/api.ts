@@ -14,6 +14,7 @@ export interface PayrollListParams {
   month?: number;
   year?: number;
   paymentStatus?: PaymentStatus;
+  search?: string;
 }
 
 function toQuery(params: PayrollListParams): string {

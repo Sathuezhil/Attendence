@@ -1,11 +1,22 @@
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PublicAdmin } from '@/features/auth/types';
+import { colors, radius, shadow, space, touch } from '@/theme';
+import { AppIcon } from '@/ui/icon';
 
 interface DashboardHeaderProps {
   user: PublicAdmin;
   unreadCount: number;
   onOpenNotifications: () => void;
+  onOpenProfile: () => void;
+  onOpenSettings: () => void;
   onLogout: () => void;
 }
 
@@ -16,6 +27,21 @@ function formatToday(): string {
     month: 'long',
     year: 'numeric',
   }).format(new Date());
+}
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) {
+    return 'Good morning';
+  }
+  if (hour < 17) {
+    return 'Good afternoon';
+  }
+  return 'Good evening';
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean)[0] ?? 'Admin';
 }
 
 function initials(name: string): string {
@@ -34,14 +60,24 @@ export function DashboardHeader({
   user,
   unreadCount,
   onOpenNotifications,
+  onOpenProfile,
+  onOpenSettings,
   onLogout,
 }: DashboardHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const badge = unreadCount > 99 ? '99+' : String(unreadCount);
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
 
   return (
     <View style={styles.header}>
       <View style={styles.titles}>
+        <Text style={styles.greeting}>
+          {greeting()}, {firstName(user.name)}
+        </Text>
         <Text style={styles.appName}>Employee Management</Text>
         <Text style={styles.title}>Boss Dashboard</Text>
         <Text style={styles.date}>{formatToday()}</Text>
@@ -52,9 +88,13 @@ export function DashboardHeader({
           accessibilityRole="button"
           accessibilityLabel="Open notifications"
           onPress={onOpenNotifications}
-          style={styles.bell}
+          style={({ pressed }) => [styles.bell, pressed ? styles.pressed : null]}
         >
-          <Text style={styles.bellText}>N</Text>
+          <AppIcon
+            name={unreadCount > 0 ? 'notifications' : 'notifications-outline'}
+            size={22}
+            color={colors.white}
+          />
           {unreadCount > 0 ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{badge}</Text>
@@ -65,29 +105,71 @@ export function DashboardHeader({
           accessibilityRole="button"
           accessibilityLabel="Open profile menu"
           onPress={() => setMenuOpen((current) => !current)}
-          style={styles.avatar}
+          style={({ pressed }) => [styles.avatar, pressed ? styles.pressed : null]}
         >
           <Text style={styles.avatarText}>{initials(user.name)}</Text>
         </Pressable>
+      </View>
 
-        {menuOpen ? (
-          <View style={styles.menu}>
-            <Text style={styles.menuName}>{user.name}</Text>
-            <Text style={styles.menuEmail}>{user.email}</Text>
+      {menuOpen ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={closeMenu}
+        >
+          <View style={styles.modalRoot}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Log out"
-              onPress={() => {
-                setMenuOpen(false);
-                onLogout();
-              }}
-              style={styles.logoutButton}
-            >
-              <Text style={styles.logoutText}>Log out</Text>
-            </Pressable>
+              accessibilityLabel="Close profile menu"
+              onPress={closeMenu}
+              style={styles.modalBackdrop}
+            />
+            <View style={[styles.menu, shadow, { top: insets.top + 8, right: 16 }]}>
+              <Text style={styles.menuName} numberOfLines={1}>
+                {user.name}
+              </Text>
+              <Text style={styles.menuEmail} numberOfLines={1}>
+                {user.email}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  closeMenu();
+                  onOpenProfile();
+                }}
+                style={({ pressed }) => [styles.menuItem, pressed ? styles.menuItemPressed : null]}
+              >
+                <AppIcon name="person-outline" size={18} color={colors.text} />
+                <Text style={styles.menuItemText}>Profile</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  closeMenu();
+                  onOpenSettings();
+                }}
+                style={({ pressed }) => [styles.menuItem, pressed ? styles.menuItemPressed : null]}
+              >
+                <AppIcon name="settings-outline" size={18} color={colors.text} />
+                <Text style={styles.menuItemText}>Settings</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Log out"
+                onPress={() => {
+                  closeMenu();
+                  onLogout();
+                }}
+                style={({ pressed }) => [styles.logoutButton, pressed ? styles.pressed : null]}
+              >
+                <AppIcon name="log-out-outline" size={18} color={colors.white} />
+                <Text style={styles.logoutText}>Log out</Text>
+              </Pressable>
+            </View>
           </View>
-        ) : null}
-      </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -97,45 +179,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 16,
+    gap: space.lg,
+    zIndex: 30,
   },
   titles: {
     flex: 1,
     gap: 4,
   },
-  appName: {
+  greeting: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#6b7280',
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 0.2,
+  },
+  appName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.72)',
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    letterSpacing: 1,
   },
   title: {
     fontSize: 26,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.white,
   },
   date: {
     fontSize: 14,
-    color: '#4b5563',
+    color: 'rgba(255,255,255,0.78)',
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
+    zIndex: 31,
   },
   bell: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(31, 182, 166, 0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bellText: {
-    color: '#111827',
-    fontSize: 15,
-    fontWeight: '800',
   },
   badge: {
     position: 'absolute',
@@ -145,12 +232,12 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 4,
-    backgroundColor: '#b91c1c',
+    backgroundColor: '#e11d48',
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    color: '#ffffff',
+    color: colors.white,
     fontSize: 10,
     fontWeight: '700',
   },
@@ -158,58 +245,74 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#111827',
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#ffffff',
+    color: colors.primary,
     fontSize: 15,
     fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.97 }],
+  },
+  modalRoot: {
+    flex: 1,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(12, 42, 61, 0.38)',
   },
   menu: {
     position: 'absolute',
-    top: 52,
-    right: 0,
-    width: 220,
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    gap: 4,
-    zIndex: 10,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 4px 12px rgba(17, 24, 39, 0.12)',
-      },
-      default: {
-        elevation: 4,
-        shadowColor: '#111827',
-        shadowOpacity: 0.12,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 },
-      },
-    }),
+    width: 260,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    gap: 8,
   },
   menuName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
   menuEmail: {
     fontSize: 13,
-    color: '#6b7280',
+    color: colors.muted,
     marginBottom: 8,
   },
+  menuItem: {
+    minHeight: touch.minHeight,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#eef7f8',
+  },
+  menuItemPressed: {
+    backgroundColor: '#d8eef0',
+  },
+  menuItemText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
   logoutButton: {
-    minHeight: 40,
-    borderRadius: 10,
-    backgroundColor: '#111827',
+    minHeight: touch.minHeight,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
   },
   logoutText: {
-    color: '#ffffff',
+    color: colors.white,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

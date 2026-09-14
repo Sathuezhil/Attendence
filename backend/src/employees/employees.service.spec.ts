@@ -17,9 +17,7 @@ const employee = {
   dateOfBirth: new Date('1815-12-10T00:00:00.000Z'),
   gender: null,
   nationality: null,
-  address: null,
   jobTitle: 'Engineer',
-  department: 'IT',
   joiningDate: new Date('2020-01-01T00:00:00.000Z'),
   salary: 1000,
   status: EmployeeStatus.ACTIVE,
@@ -99,7 +97,7 @@ describe('EmployeesService', () => {
     );
   });
 
-  it('soft-deletes instead of destroying the record', async () => {
+  it('archives an employee so the code can be reused', async () => {
     prisma.employee.findFirst.mockResolvedValue(employee);
     prisma.employee.update.mockResolvedValue({
       ...employee,
@@ -107,10 +105,43 @@ describe('EmployeesService', () => {
       deletedAt: new Date(),
     });
 
-    const result = await service.deactivate(employee.id);
+    const result = await service.remove(employee.id);
 
-    expect(prisma.employee.update).toHaveBeenCalledTimes(1);
+    expect(prisma.employee.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: employee.id },
+        data: expect.objectContaining({
+          status: EmployeeStatus.INACTIVE,
+          deletedAt: expect.any(Date),
+        }),
+      }),
+    );
     expect(result.employmentStatus).toBe(EmployeeStatus.INACTIVE);
+  });
+
+  it('filters by joining date range and paginates instead of loading the full table', async () => {
+    prisma.employee.count.mockResolvedValue(0);
+    prisma.employee.findMany.mockResolvedValue([]);
+
+    await service.findAll({
+      joiningFrom: '2020-01-01',
+      joiningTo: '2020-12-31',
+      page: 2,
+      limit: 20,
+    });
+
+    expect(prisma.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 20,
+        take: 20,
+        where: expect.objectContaining({
+          joiningDate: {
+            gte: new Date('2020-01-01T00:00:00.000Z'),
+            lte: new Date('2020-12-31T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
   });
 
   it('rejects a date of birth in the future', async () => {

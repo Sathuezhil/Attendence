@@ -2,25 +2,63 @@ import { AttendanceStatus } from './types';
 
 export const attendanceStatuses: AttendanceStatus[] = [
   'PRESENT',
-  'ABSENT',
-  'LATE',
-  'HALF_DAY',
   'ON_LEAVE',
+  'HALF_DAY',
+  'HOLIDAY',
 ];
 
+export type DayMark = 'ACTIVE' | 'LEAVE' | 'HALF_DAY' | 'OFF_DAY';
+
+export const dayMarks: Array<{ id: DayMark; label: string; status: AttendanceStatus }> = [
+  { id: 'ACTIVE', label: 'Active', status: 'PRESENT' },
+  { id: 'LEAVE', label: 'Leave', status: 'ON_LEAVE' },
+  { id: 'HALF_DAY', label: 'Half day', status: 'HALF_DAY' },
+  { id: 'OFF_DAY', label: 'Off day', status: 'HOLIDAY' },
+];
+
+export function dayMarkFromStatus(status: string | undefined): DayMark | null {
+  switch (status) {
+    case 'PRESENT':
+    case 'LATE':
+      return 'ACTIVE';
+    case 'ON_LEAVE':
+    case 'ABSENT':
+      return 'LEAVE';
+    case 'HALF_DAY':
+      return 'HALF_DAY';
+    case 'HOLIDAY':
+      return 'OFF_DAY';
+    default:
+      return null;
+  }
+}
+
 export function statusLabel(status: string): string {
-  return status.replaceAll('_', ' ');
+  switch (status) {
+    case 'PRESENT':
+    case 'LATE':
+      return 'Active';
+    case 'ABSENT':
+    case 'ON_LEAVE':
+      return 'Leave';
+    case 'HALF_DAY':
+      return 'Half day';
+    case 'HOLIDAY':
+      return 'Off day';
+    default:
+      return status.replaceAll('_', ' ');
+  }
 }
 
 export function statusColor(status: AttendanceStatus): string {
   switch (status) {
     case 'PRESENT':
-      return '#166534';
     case 'LATE':
-      return '#92400e';
+      return '#166534';
     case 'HALF_DAY':
       return '#1e40af';
     case 'ON_LEAVE':
+    case 'ABSENT':
       return '#6d28d9';
     case 'HOLIDAY':
       return '#374151';

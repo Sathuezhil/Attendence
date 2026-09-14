@@ -1,5 +1,5 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,13 +12,22 @@ import {
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { FilterButton } from '@/features/filters/filter-button';
+import { FilterModal } from '@/features/filters/filter-modal';
+import { PaginationBar } from '@/features/filters/pagination-bar';
+import { SearchBar } from '@/features/filters/search-bar';
+import { StatusFilter } from '@/features/filters/status-filter';
+import { useDebouncedValue } from '@/features/filters/use-debounced-value';
+import { usePagedFilters } from '@/features/filters/use-paged-filters';
 import { fetchPayroll } from '@/features/payroll/api';
 import { labelOf, money, monthLabel, statusColor } from '@/features/payroll/format';
 import { PAYMENT_STATUSES, PaymentStatus, PayrollRecord } from '@/features/payroll/types';
 import { ApiError } from '@/lib/api';
+import { FabButton, useSafeBottomOffset } from '@/ui/fab-button';
 
 export default function PayrollListScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
+  const listBottom = useSafeBottomOffset(96);
   const params = useLocalSearchParams<{ employeeId?: string | string[] }>();
   const employeeId = Array.isArray(params.employeeId) ? params.employeeId[0] : params.employeeId;
 
@@ -26,30 +35,38 @@ export default function PayrollListScreen() {
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | undefined>();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search);
+  const filterKey = JSON.stringify({
+    employeeId,
+    search: debouncedSearch,
+    month,
+    year,
+    paymentStatus,
+  });
+  const { page, setPage } = usePagedFilters(filterKey);
+  const filterCount = [month, year, paymentStatus].filter(Boolean).length;
 
   const query = useQuery({
-    queryKey: ['payroll', { employeeId, month, year, paymentStatus }],
+    queryKey: [
+      'payroll',
+      { employeeId, search: debouncedSearch, month, year, paymentStatus, page },
+    ],
     enabled: isReady && isAuthenticated,
     queryFn: () =>
       fetchPayroll({
         employeeId,
+        search: debouncedSearch.trim() || undefined,
         month: month ? Number(month) : undefined,
         year: year ? Number(year) : undefined,
         paymentStatus,
-        limit: 50,
+        page,
+        limit: 20,
       }),
   });
 
-  const records = useMemo(() => {
-    const list = query.data?.data ?? [];
-    const term = search.trim().toLowerCase();
-    if (!term) {
-      return list;
-    }
-    return list.filter((item) =>
-      `${item.employee.fullName} ${item.employee.employeeCode}`.toLowerCase().includes(term),
-    );
-  }, [query.data, search]);
+  const records = query.data?.data ?? [];
+  const totalPages = query.data?.totalPages ?? 0;
 
   if (!isReady || !isAuthenticated) {
     return (
@@ -64,51 +81,22 @@ export default function PayrollListScreen() {
       <FlatList
         data={records}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: listBottom }]}
         refreshControl={
           <RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />
         }
         ListHeaderComponent={
           <View style={styles.filters}>
             {employeeId ? <Text style={styles.scope}>Showing one employee</Text> : null}
-            <TextInput
-              onChangeText={setSearch}
-              placeholder="Search employee"
-              placeholderTextColor="#9ca3af"
-              style={styles.search}
-              value={search}
+            <SearchBar onChange={setSearch} placeholder="Search employee" value={search} />
+            <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
+            <StatusFilter
+              allLabel="All status"
+              labelOf={labelOf}
+              onChange={setPaymentStatus}
+              options={PAYMENT_STATUSES}
+              value={paymentStatus}
             />
-            <View style={styles.row}>
-              <TextInput
-                keyboardType="number-pad"
-                onChangeText={setMonth}
-                placeholder="Month 1-12"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={month}
-              />
-              <TextInput
-                keyboardType="number-pad"
-                onChangeText={setYear}
-                placeholder="Year"
-                placeholderTextColor="#9ca3af"
-                style={[styles.search, styles.flex]}
-                value={year}
-              />
-            </View>
-            <View style={styles.chips}>
-              {[undefined, ...PAYMENT_STATUSES].map((option) => (
-                <Pressable
-                  key={option ?? 'ALL'}
-                  onPress={() => setPaymentStatus(option)}
-                  style={[styles.chip, paymentStatus === option ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, paymentStatus === option ? styles.chipTextActive : null]}>
-                    {option ? labelOf(option) : 'All status'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
           </View>
         }
         ListEmptyComponent={
@@ -124,16 +112,44 @@ export default function PayrollListScreen() {
             <Text style={styles.empty}>No payroll records found</Text>
           )
         }
+        ListFooterComponent={<PaginationBar onPage={setPage} page={page} totalPages={totalPages} />}
         renderItem={({ item }) => <PayrollRow record={item} />}
       />
-      <Pressable
+      <FilterModal
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setMonth('');
+          setYear('');
+          setPaymentStatus(undefined);
+        }}
+        onClose={() => setFiltersOpen(false)}
+        visible={filtersOpen}
+      >
+        <View style={styles.row}>
+          <TextInput
+            keyboardType="number-pad"
+            onChangeText={setMonth}
+            placeholder="Month 1-12"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.flex]}
+            value={month}
+          />
+          <TextInput
+            keyboardType="number-pad"
+            onChangeText={setYear}
+            placeholder="Year"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.flex]}
+            value={year}
+          />
+        </View>
+      </FilterModal>
+      <FabButton
+        label="Add Payroll"
         onPress={() =>
           router.push((employeeId ? `/payroll/new?employeeId=${employeeId}` : '/payroll/new') as Href)
         }
-        style={styles.fab}
-      >
-        <Text style={styles.fabText}>Add Payroll</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -182,7 +198,7 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  search: {
+  input: {
     minHeight: 46,
     borderRadius: 12,
     borderWidth: 1,
@@ -190,28 +206,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: 12,
     color: '#111827',
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#e5e7eb',
-  },
-  chipActive: {
-    backgroundColor: '#111827',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  chipTextActive: {
-    color: '#ffffff',
   },
   card: {
     backgroundColor: '#ffffff',
@@ -251,19 +245,5 @@ const styles = StyleSheet.create({
   error: {
     color: '#991b1b',
     textAlign: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 20,
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    minHeight: 48,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  fabText: {
-    color: '#ffffff',
-    fontWeight: '700',
   },
 });

@@ -8,9 +8,22 @@
     "scheme": "employee-management",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.employeemanagement.app",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Employee Management connects to your company server on the local network during development.",
+        "NSPhotoLibraryUsageDescription": "Choose passport, visa, and ID photos to attach to employee documents.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
+      "package": "com.employeemanagement.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -33,11 +46,19 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1f3f6c1d-5d1a-41b3-90ce-256640a9b5d6"
+      }
     }
   }
 }

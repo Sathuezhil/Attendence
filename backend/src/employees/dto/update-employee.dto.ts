@@ -91,20 +91,8 @@ export class UpdateEmployeeDto {
   @Transform(optionalTrim)
   @IsOptional()
   @IsString()
-  @MaxLength(250)
-  address?: string;
-
-  @Transform(optionalTrim)
-  @IsOptional()
-  @IsString()
   @MaxLength(120)
   jobTitle?: string;
-
-  @Transform(optionalTrim)
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  department?: string;
 
   @IsOptional()
   @IsDateString()

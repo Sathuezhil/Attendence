@@ -49,6 +49,30 @@ export class UsersService {
     });
   }
 
+  findById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  updateProfile(
+    id: string,
+    data: { name?: string; email?: string },
+  ): Promise<PublicAdmin> {
+    return this.prisma.user.update({
+      where: { id },
+      data,
+      select: publicAdminSelect,
+    });
+  }
+
+  updatePasswordHash(id: string, passwordHash: string): Promise<void> {
+    return this.prisma.user
+      .update({
+        where: { id },
+        data: { passwordHash },
+      })
+      .then(() => undefined);
+  }
+
   createAdmin(data: {
     name: string;
     email: string;

@@ -1,10 +1,12 @@
+// Prisma is used for generated TypeScript enums/models only.
+// Runtime data is stored in Firestore; this datasource is never connected.
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = "postgresql://unused:unused@localhost:5432/unused?schema=public"
 }
 
 enum Role {
@@ -99,6 +101,9 @@ enum NotificationType {
   LEAVE_APPROVED
   LEAVE_REJECTED
   ATTENDANCE_ALERT
+  PAYROLL_CREATED
+  INVOICE_OVERDUE
+  SYSTEM
 }
 
 enum PayrollPaymentStatus {
@@ -114,6 +119,9 @@ enum AppSettingKey {
   DOCUMENT_EXPIRY_WARNING_DAYS
   DOCUMENT_EXPIRY_URGENT_DAYS
   PAYROLL_WORKING_DAYS_PER_MONTH
+  COMPANY_PROFILE
+  LEAVE_POLICY
+  NOTIFICATION_SETTINGS
 }
 
 /// Boss/admin account. passwordHash and twoFactorSecret must never be returned by the API.
@@ -148,21 +156,21 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-/// Important employee records are archived via deletedAt, not hard-deleted by default.
+/// Important employee records are archived via deletedAt, not hard-deleted.
+/// employeeCode and email stay unique only while deletedAt is null, so a
+/// deleted employee's code can be assigned again.
 model Employee {
   id             String         @id @default(uuid())
-  employeeCode   String         @unique @map("employee_code")
+  employeeCode   String         @map("employee_code")
   firstName      String         @map("first_name")
   lastName       String         @map("last_name")
-  email          String?        @unique
+  email          String?
   phone          String?
   alternatePhone String?        @map("alternate_phone")
   dateOfBirth    DateTime?      @map("date_of_birth") @db.Date
   gender         Gender?
   nationality    String?
-  address        String?
   jobTitle       String?        @map("position")
-  department     String?
   joiningDate    DateTime?      @map("joining_date") @db.Date
   salary         Decimal?       @map("salary") @db.Decimal(12, 2)
   status         EmployeeStatus @default(ACTIVE)
@@ -179,11 +187,11 @@ model Employee {
   payrollRecords PayrollRecord[]
 
   @@index([status])
-  @@index([department])
   @@index([firstName])
   @@index([lastName])
   @@index([phone])
   @@index([jobTitle])
+  @@index([joiningDate])
   @@index([deletedAt])
   @@map("employees")
 }

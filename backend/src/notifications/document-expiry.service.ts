@@ -14,6 +14,7 @@ import {
 } from '../documents/document-expiry';
 import { toPublicDocumentType } from '../documents/documents.mapper';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { buildExpiryNotificationDrafts } from './expiry-notification.factory';
 import { ExpiryAlertItem, ExpiryAlertsResponse } from './notifications.types';
 
@@ -38,6 +39,7 @@ export class DocumentExpiryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<AppConfiguration, true>,
+    private readonly settings: SettingsService,
   ) {}
 
   async getThresholds(): Promise<ExpiryThresholds> {
@@ -97,6 +99,13 @@ export class DocumentExpiryService {
     if (drafts.length === 0) {
       this.logger.log(
         `Document expiry check examined ${documents.length} document(s); no notifications to create`,
+      );
+      return { created: 0, examined: documents.length };
+    }
+
+    if (!(await this.settings.notificationsEnabled('documentExpiry'))) {
+      this.logger.log(
+        `Document expiry check examined ${documents.length} document(s); notifications disabled`,
       );
       return { created: 0, examined: documents.length };
     }

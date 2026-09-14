@@ -7,6 +7,9 @@ export interface DashboardSummary {
   lateToday: number;
   documentsExpired: number;
   documentsExpiringSoon: number;
+  pendingLeave: number;
+  outstandingInvoices: number;
+  outstandingInvoiceAmount: number;
 }
 
 export interface DashboardActivity {

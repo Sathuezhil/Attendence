@@ -4,6 +4,9 @@ export const NOTIFICATION_TYPES = [
   'LEAVE_APPROVED',
   'LEAVE_REJECTED',
   'ATTENDANCE_ALERT',
+  'PAYROLL_CREATED',
+  'INVOICE_OVERDUE',
+  'SYSTEM',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

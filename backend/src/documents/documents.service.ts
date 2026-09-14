@@ -297,22 +297,59 @@ export class DocumentsService {
     today: Date,
     warningDays: number,
   ): Prisma.DocumentWhereInput {
-    const where: Prisma.DocumentWhereInput = {
-      employeeId: query.employeeId,
-      documentType: this.resolveTypeFilter(query.documentType),
-      employee: { deletedAt: null },
-    };
-
-    if (query.expired) {
-      where.expiryDate = { lt: today };
-    } else if (query.expiringWithin) {
-      where.expiryDate = {
-        gte: today,
-        lte: addUtcDays(today, query.expiringWithin || warningDays),
-      };
+    const search = query.search?.trim();
+    const from = parseOptionalDate(query.expiryFrom, 'expiryFrom');
+    const to = parseOptionalDate(query.expiryTo, 'expiryTo');
+    if (from && to && to.getTime() < from.getTime()) {
+      throw new BadRequestException('expiryTo cannot be before expiryFrom');
     }
 
-    return where;
+    const soon = addUtcDays(today, warningDays);
+    const expiryClauses: Prisma.DocumentWhereInput[] = [];
+    if (from || to) {
+      expiryClauses.push({
+        expiryDate: { gte: from ?? undefined, lte: to ?? undefined },
+      });
+    }
+
+    const expiryStatus =
+      query.expiryStatus ??
+      (query.expired
+        ? 'EXPIRED'
+        : query.expiringWithin
+          ? 'EXPIRING_SOON'
+          : undefined);
+
+    if (expiryStatus === 'EXPIRED') {
+      expiryClauses.push({ expiryDate: { lt: today } });
+    } else if (expiryStatus === 'EXPIRING_SOON') {
+      expiryClauses.push({
+        expiryDate: {
+          gte: today,
+          lte: query.expiringWithin
+            ? addUtcDays(today, query.expiringWithin)
+            : soon,
+        },
+      });
+    } else if (expiryStatus === 'VALID') {
+      expiryClauses.push({ expiryDate: { gt: soon } });
+    }
+
+    return {
+      employeeId: query.employeeId,
+      documentType: this.resolveTypeFilter(query.documentType),
+      AND: expiryClauses,
+      employee: {
+        deletedAt: null,
+        OR: search
+          ? [
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName: { contains: search, mode: 'insensitive' } },
+              { employeeCode: { contains: search, mode: 'insensitive' } },
+            ]
+          : undefined,
+      },
+    };
   }
 
   private resolveTypeFilter(

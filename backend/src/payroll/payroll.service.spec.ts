@@ -152,6 +152,35 @@ describe('PayrollService', () => {
     expect(result.paymentStatus).toBe('CANCELLED');
   });
 
+  it('searches payroll by employee name and code on the server', async () => {
+    prisma.payrollRecord.count.mockResolvedValue(0);
+    prisma.payrollRecord.findMany.mockResolvedValue([]);
+
+    await service.findAll({
+      search: 'Ada',
+      month: 9,
+      year: 2026,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(prisma.payrollRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+        where: expect.objectContaining({
+          payrollMonth: 9,
+          payrollYear: 2026,
+          employee: expect.objectContaining({
+            OR: expect.arrayContaining([
+              { firstName: { contains: 'Ada', mode: 'insensitive' } },
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('lists payroll history newest first', async () => {
     prisma.payrollRecord.count.mockResolvedValue(1);
     prisma.payrollRecord.findMany.mockResolvedValue([record]);

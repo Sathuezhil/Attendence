@@ -1,6 +1,6 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Alert, Platform } from 'react-native';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -12,6 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { confirmAction } from '@/features/attendance/confirm';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
+import { downloadAndOpenExport } from '@/features/exports/open-file';
 import { cancelInvoice, fetchInvoice, markInvoicePaid, sendInvoice } from '@/features/invoices/api';
 import { labelOf, money, statusColor } from '@/features/invoices/format';
 import { ApiError } from '@/lib/api';
@@ -20,6 +21,8 @@ export default function InvoiceDetailsScreen() {
   const { isReady, isAuthenticated } = useRequireAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['invoices', id],
@@ -158,17 +161,21 @@ export default function InvoiceDetailsScreen() {
           </Pressable>
         ) : null}
         <Pressable
-          onPress={() => {
-            const message = 'PDF export will be available with the PDF module.';
-            if (Platform.OS === 'web' && typeof window !== 'undefined') {
-              window.alert(message);
-              return;
+          disabled={exporting}
+          onPress={async () => {
+            setExporting(true);
+            setExportError(null);
+            try {
+              await downloadAndOpenExport(`/invoices/${invoice.id}/pdf`);
+            } catch (error) {
+              setExportError(error instanceof ApiError ? error.message : 'Unable to generate this invoice PDF.');
+            } finally {
+              setExporting(false);
             }
-            Alert.alert('Generate PDF', message);
           }}
           style={styles.secondary}
         >
-          <Text style={styles.secondaryText}>Generate PDF</Text>
+          <Text style={styles.secondaryText}>{exporting ? 'Generating…' : 'Generate PDF'}</Text>
         </Pressable>
         {canCancel ? (
           <Pressable
@@ -185,6 +192,7 @@ export default function InvoiceDetailsScreen() {
         ) : null}
       </View>
 
+      {exportError ? <Text style={styles.error}>{exportError}</Text> : null}
       {actionError ? (
         <Text style={styles.error}>
           {actionError instanceof ApiError ? actionError.message : 'Unable to update invoice.'}

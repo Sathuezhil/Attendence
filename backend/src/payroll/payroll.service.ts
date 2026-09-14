@@ -12,7 +12,11 @@ import {
   Prisma,
 } from '@prisma/client';
 import { parseOptionalDate } from '../common/utils/parse-date';
+import { toDateOnly } from '../attendance/working-hours';
+import { PayslipData } from '../exports/export.types';
+import { roundMoney } from '../reports/report-math';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationInboxService } from '../notifications/notification-inbox.service';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
 import { MarkPaidDto } from './dto/mark-paid.dto';
 import { QueryPayrollDto } from './dto/query-payroll.dto';
@@ -44,6 +48,7 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calculation: PayrollCalculationService,
+    private readonly inbox?: NotificationInboxService,
   ) {}
 
   async preview(dto: CreatePayrollDto): Promise<PayrollPreview> {
@@ -130,18 +135,36 @@ export class PayrollService {
           include: { employee: { select: employeeSelect } },
         });
 
+    await this.inbox?.notify({
+      type: 'PAYROLL_CREATED',
+      title: 'Payroll created',
+      message: `Payroll for ${record.employee.firstName} ${record.employee.lastName} (${dto.payrollMonth}/${dto.payrollYear}) is ready.`,
+      employeeId: employee.id,
+      eventKey: `payroll-created:${record.id}`,
+    });
+
     return this.toResponse(record);
   }
 
   async findAll(query: QueryPayrollDto): Promise<PaginatedPayroll> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+    const search = query.search?.trim();
     const where: Prisma.PayrollRecordWhereInput = {
       employeeId: query.employeeId,
       payrollMonth: query.month,
       payrollYear: query.year,
       paymentStatus: query.paymentStatus,
-      employee: { deletedAt: null },
+      employee: {
+        deletedAt: null,
+        OR: search
+          ? [
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName: { contains: search, mode: 'insensitive' } },
+              { employeeCode: { contains: search, mode: 'insensitive' } },
+            ]
+          : undefined,
+      },
     };
 
     const [total, records] = await Promise.all([
@@ -184,6 +207,43 @@ export class PayrollService {
 
   async findOne(id: string): Promise<PayrollResponse> {
     return this.toResponse(await this.findOrThrow(id));
+  }
+
+  async getPayslip(id: string): Promise<PayslipData> {
+    const record = await this.findOrThrow(id);
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: record.employeeId, deletedAt: null },
+      select: {
+        employeeCode: true,
+        firstName: true,
+        lastName: true,
+        jobTitle: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Payroll record not found');
+    }
+
+    return {
+      employeeCode: employee.employeeCode,
+      fullName: `${employee.firstName} ${employee.lastName}`.trim(),
+      jobTitle: employee.jobTitle,
+      payrollMonth: record.payrollMonth,
+      payrollYear: record.payrollYear,
+      basicSalary: toMoney(record.basicSalary),
+      allowances: toMoney(record.allowances),
+      overtimeAmount: toMoney(record.overtimeAmount),
+      unpaidLeaveDays: record.unpaidLeaveDays,
+      unpaidLeaveDeduction: toMoney(record.unpaidLeaveDeduction),
+      otherDeductions: roundMoney(
+        toMoney(record.deductions) + toMoney(record.otherDeductions),
+      ),
+      grossSalary: toMoney(record.grossSalary),
+      netSalary: toMoney(record.netSalary),
+      paymentStatus: record.paymentStatus,
+      paymentDate: record.paymentDate ? toDateOnly(record.paymentDate) : null,
+    };
   }
 
   async update(id: string, dto: UpdatePayrollDto): Promise<PayrollResponse> {

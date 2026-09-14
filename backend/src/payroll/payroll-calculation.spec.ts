@@ -3,6 +3,7 @@ import {
   DEFAULT_WORKING_DAYS_PER_MONTH,
   monthDateRange,
   overlappingDays,
+  resolveOvertimeEnabled,
   resolveWorkingDaysPerMonth,
 } from './payroll-calculation';
 
@@ -10,6 +11,9 @@ describe('payroll calculation', () => {
   it('uses 26 working days by default', () => {
     expect(DEFAULT_WORKING_DAYS_PER_MONTH).toBe(26);
     expect(resolveWorkingDaysPerMonth(undefined, 26)).toBe(26);
+    expect(resolveWorkingDaysPerMonth({ workingDaysPerMonth: 22 }, 26)).toBe(
+      22,
+    );
     expect(resolveWorkingDaysPerMonth({ days: 22 }, 26)).toBe(22);
   });
 
@@ -68,5 +72,11 @@ describe('payroll calculation', () => {
         month.end,
       ),
     ).toBe(2);
+  });
+
+  it('reads overtimeEnabled from payroll settings JSON', () => {
+    expect(resolveOvertimeEnabled({ overtimeEnabled: false })).toBe(false);
+    expect(resolveOvertimeEnabled({ workingDaysPerMonth: 26 })).toBe(true);
+    expect(resolveOvertimeEnabled(26)).toBe(true);
   });
 });

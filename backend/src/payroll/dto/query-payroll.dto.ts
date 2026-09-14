@@ -1,5 +1,14 @@
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { PAYMENT_STATUSES } from '../payroll.types';
 
 export class QueryPayrollDto {
@@ -37,4 +46,12 @@ export class QueryPayrollDto {
   @IsOptional()
   @IsIn([...PAYMENT_STATUSES])
   paymentStatus?: (typeof PAYMENT_STATUSES)[number];
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  search?: string;
 }

@@ -1,5 +1,14 @@
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
+import { PUBLIC_ATTENDANCE_STATUSES } from '../attendance.types';
 
 const optionalTrim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -10,19 +19,18 @@ export class QueryTodayAttendanceDto {
   @IsString()
   date?: string;
 
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
   @Transform(optionalTrim)
   @IsOptional()
   @IsString()
   search?: string;
 
   @IsOptional()
-  @IsIn(['PRESENT', 'ABSENT', 'LATE', 'HALF_DAY', 'ON_LEAVE'])
-  status?: 'PRESENT' | 'ABSENT' | 'LATE' | 'HALF_DAY' | 'ON_LEAVE';
-
-  @Transform(optionalTrim)
-  @IsOptional()
-  @IsString()
-  department?: string;
+  @IsIn([...PUBLIC_ATTENDANCE_STATUSES])
+  status?: (typeof PUBLIC_ATTENDANCE_STATUSES)[number];
 
   @IsOptional()
   @Type(() => Number)

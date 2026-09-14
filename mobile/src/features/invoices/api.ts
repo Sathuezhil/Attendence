@@ -15,6 +15,9 @@ export interface InvoiceListParams {
   customer?: string;
   fromDate?: string;
   toDate?: string;
+  dueFrom?: string;
+  dueTo?: string;
+  invoiceNumber?: string;
 }
 
 function toQuery(params: InvoiceListParams): string {
