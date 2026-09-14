@@ -2,7 +2,13 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { ApiError, setSessionExpiredListener } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
 import { secureStorage } from '@/lib/secure-storage';
-import { fetchCurrentAdmin, loginRequest, logoutRequest, registerRequest } from './api';
+import {
+  fetchCurrentAdmin,
+  loginRequest,
+  logoutRequest,
+  registerRequest,
+  subscribeAuth,
+} from './api';
 import { PublicAdmin } from './types';
 
 interface AuthContextValue {
@@ -24,10 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function restoreSession() {
+    const unsubscribe = subscribeAuth(async (uid) => {
       try {
-        const accessToken = await secureStorage.getAccessToken();
-        if (!accessToken) {
+        if (!uid) {
+          if (!cancelled) {
+            setUser(null);
+          }
           return;
         }
 
@@ -39,17 +47,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error instanceof ApiError && error.status === 401) {
           await secureStorage.clearTokens();
         }
+        if (!cancelled) {
+          setUser(null);
+        }
       } finally {
         if (!cancelled) {
           setIsReady(true);
         }
       }
-    }
-
-    void restoreSession();
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 

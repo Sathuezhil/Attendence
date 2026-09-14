@@ -1,13 +1,10 @@
-import { apiRequest } from '@/lib/api';
+import { loadSettings, saveSettings } from '@/lib/domain';
 import { AppSettings, UpdateAppSettings } from './types';
 
 export function fetchSettings(): Promise<AppSettings> {
-  return apiRequest<AppSettings>('/settings');
+  return loadSettings();
 }
 
 export function updateSettings(payload: UpdateAppSettings): Promise<AppSettings> {
-  return apiRequest<AppSettings>('/settings', {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
+  return saveSettings(payload);
 }
