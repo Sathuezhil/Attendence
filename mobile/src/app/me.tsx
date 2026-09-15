@@ -16,8 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRequireAuth } from '@/features/auth/use-require-auth';
 import { fetchEmployeeDocuments, uploadDocument } from '@/features/documents/api';
+import { EmiratesIdScanner } from '@/features/documents/emirates-id-scanner';
 import { formatBytes, labelOf, statusColor, statusLabel } from '@/features/documents/format';
-import { captureDocumentPhoto, pickDocumentFile } from '@/features/documents/pick-file';
+import { pickPdfFile } from '@/features/documents/pick-file';
 import { PickedDocument } from '@/features/documents/types';
 import { fetchMyEmployee, updateMyEmployee } from '@/features/employees/api';
 import { EmployeeForm } from '@/features/employees/employee-form';
@@ -38,6 +39,7 @@ export default function EmployeeHomeScreen() {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     if (isReady && isAuthenticated && user?.role === 'ADMIN') {
@@ -203,29 +205,40 @@ export default function EmployeeHomeScreen() {
           <View style={styles.card}>
             <Text style={styles.section}>Emirates ID</Text>
             <Text style={styles.hint}>
-              Scan your Emirates ID or attach a PDF. Admin sees it under your employee documents.
+              Scan Emirates ID with the camera, or choose a PDF file. Admin sees it under your
+              documents.
             </Text>
             <View style={styles.actions}>
               <Pressable
                 disabled={busy}
-                onPress={() => void addFile(captureDocumentPhoto)}
+                onPress={() => {
+                  setError(null);
+                  setMessage(null);
+                  setScannerOpen(true);
+                }}
                 style={[styles.action, busy ? styles.actionDisabled : null]}
               >
-                {upload.isPending ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={styles.actionText}>Scan ID</Text>
-                )}
+                <Text style={styles.actionText}>Scan ID</Text>
               </Pressable>
               <Pressable
                 disabled={busy}
-                onPress={() => void addFile(pickDocumentFile)}
+                onPress={() => void addFile(pickPdfFile)}
                 style={[styles.actionSecondary, busy ? styles.actionDisabled : null]}
               >
-                <Text style={styles.actionSecondaryText}>Upload PDF / photo</Text>
+                {upload.isPending ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={styles.actionSecondaryText}>Choose PDF</Text>
+                )}
               </Pressable>
             </View>
           </View>
+
+          <EmiratesIdScanner
+            visible={scannerOpen}
+            onClose={() => setScannerOpen(false)}
+            onCapture={(file) => upload.mutate(file)}
+          />
 
           {message ? <Text style={styles.success}>{message}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}

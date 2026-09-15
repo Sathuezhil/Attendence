@@ -50,7 +50,13 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose a photo or PDF of your Emirates ID.",
+          "photosPermission": "Choose passport, visa, and ID photos to attach to employee documents.",
+          "cameraPermission": "Scan Emirates ID so it can be added to your employee documents."
+        }
+      ],
+      [
+        "expo-camera",
+        {
           "cameraPermission": "Scan Emirates ID so it can be added to your employee documents."
         }
       ]
