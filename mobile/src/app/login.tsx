@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 18,
-    backgroundColor: '#000000',
+    backgroundColor: '#FFFFFF',
     marginBottom: 16,
     alignSelf: 'center',
   },
