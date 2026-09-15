@@ -48,7 +48,7 @@ export function getFirebaseWebConfig() {
 export function assertFirebaseConfigured(): void {
   if (!process.env.EXPO_PUBLIC_FIREBASE_API_KEY?.trim()) {
     throw new ApiError(
-      'Firebase Web API key is missing. In Firebase Console add a Web app, then put EXPO_PUBLIC_FIREBASE_API_KEY in mobile/.env and restart Expo.',
+      'Firebase Web API key is missing. For Expo Go put EXPO_PUBLIC_FIREBASE_API_KEY in mobile/.env. For APK builds, add the same key in EAS environment variables and rebuild.',
       0,
     );
   }
