@@ -5,9 +5,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import { ApiError } from '@/lib/api';
 import { getDb, requireUser } from '@/lib/firebase';
@@ -161,6 +163,33 @@ export async function getById(name: string, id: string): Promise<DocRecord> {
     throw new ApiError('Not found', 404);
   }
   return { id: snap.id, ...snap.data() };
+}
+
+export async function getByIdOrNull(name: string, id: string): Promise<DocRecord | null> {
+  requireUser();
+  const snap = await getDoc(doc(getDb(), name, id));
+  if (!snap.exists()) {
+    return null;
+  }
+  return { id: snap.id, ...snap.data() };
+}
+
+export async function peekById(name: string, id: string): Promise<DocRecord | null> {
+  const snap = await getDoc(doc(getDb(), name, id));
+  if (!snap.exists()) {
+    return null;
+  }
+  return { id: snap.id, ...snap.data() };
+}
+
+export async function listWhere(
+  name: string,
+  field: string,
+  value: string,
+): Promise<DocRecord[]> {
+  requireUser();
+  const snap = await getDocs(query(collection(getDb(), name), where(field, '==', value)));
+  return snap.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
 export async function createRecord(

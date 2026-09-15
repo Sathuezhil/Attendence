@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { ApiError } from '@/lib/api';
 import { PickedDocument } from './types';
 
 const ACCEPT = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -71,4 +73,33 @@ function pickFromWebInput(): Promise<PickedDocument | null> {
     };
     input.click();
   });
+}
+
+export async function captureDocumentPhoto(): Promise<PickedDocument | null> {
+  if (Platform.OS === 'web') {
+    return pickDocumentFile();
+  }
+
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    throw new ApiError('Camera permission is required to scan Emirates ID.', 400);
+  }
+
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    quality: 0.85,
+  });
+
+  if (result.canceled || !result.assets?.[0]) {
+    return null;
+  }
+
+  const asset = result.assets[0];
+  const name = asset.fileName ?? `emirates-id-${Date.now()}.jpg`;
+  return {
+    uri: asset.uri,
+    name,
+    mimeType: mimeFromName(name, asset.mimeType ?? 'image/jpeg'),
+    size: asset.fileSize,
+  };
 }

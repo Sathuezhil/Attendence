@@ -3,20 +3,22 @@ import { ApiError, setSessionExpiredListener } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
 import { secureStorage } from '@/lib/secure-storage';
 import {
-  fetchCurrentAdmin,
   loginRequest,
   logoutRequest,
+  registerEmployeeRequest,
   registerRequest,
+  resolveSession,
   subscribeAuth,
 } from './api';
-import { PublicAdmin } from './types';
+import { AuthUser } from './types';
 
 interface AuthContextValue {
   isReady: boolean;
   isAuthenticated: boolean;
-  user: PublicAdmin | null;
+  user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  registerEmployee: (firstName: string, lastName: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -25,7 +27,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
-  const [user, setUser] = useState<PublicAdmin | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,12 +41,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const currentUser = await fetchCurrentAdmin();
+        const currentUser = await resolveSession();
         if (!cancelled) {
           setUser(currentUser);
         }
       } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
+        const denied = error instanceof ApiError && (error.status === 401 || error.status === 403);
+        if (denied) {
+          if (uid) {
+            try {
+              await logoutRequest();
+            } catch {
+              // Session restore failed; clear local auth anyway.
+            }
+          }
           await secureStorage.clearTokens();
         }
         if (!cancelled) {
@@ -91,6 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await secureStorage.setRefreshToken(result.refreshToken);
         setUser(result.user);
       },
+      async registerEmployee(firstName: string, lastName: string, email: string, password: string) {
+        const result = await registerEmployeeRequest({ firstName, lastName, email, password });
+        await secureStorage.setAccessToken(result.accessToken);
+        await secureStorage.setRefreshToken(result.refreshToken);
+        setUser(result.user);
+      },
       async logout() {
         try {
           await logoutRequest();
@@ -103,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
       async refreshProfile() {
-        const currentUser = await fetchCurrentAdmin();
+        const currentUser = await resolveSession();
         setUser(currentUser);
       },
     }),

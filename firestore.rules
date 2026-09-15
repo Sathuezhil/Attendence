@@ -1,8 +1,89 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function emailMatches(data) {
+      return data.keys().hasAny(['email'])
+        && data.email is string
+        && request.auth.token.email is string
+        && data.email == request.auth.token.email;
+    }
+
+    function isOwnEmployeeDoc(data) {
+      return isSignedIn() && (
+        (data.keys().hasAny(['authUid']) && data.authUid == request.auth.uid)
+        || emailMatches(data)
+      );
+    }
+
+    function ownsEmployee(employeeId) {
+      return isAdmin() || (
+        employeeId is string
+        && exists(/databases/$(database)/documents/employees/$(employeeId))
+        && isOwnEmployeeDoc(get(/databases/$(database)/documents/employees/$(employeeId)).data)
+      );
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'ADMIN'
+        && !exists(/databases/$(database)/documents/app_config/lock);
+      allow update: if isAdmin() && request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    match /app_config/{id} {
+      allow get: if id == 'lock' || isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isAdmin() || (
+        id == 'lock'
+        && isAdmin()
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    match /employees/{id} {
+      allow read: if isAdmin() || isOwnEmployeeDoc(resource.data);
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.auth.uid == id
+        && request.resource.data.authUid == request.auth.uid
+        && emailMatches(request.resource.data)
+      );
+      allow update: if isAdmin() || (
+        isOwnEmployeeDoc(resource.data)
+        && request.resource.data.authUid == request.auth.uid
+        && emailMatches(request.resource.data)
+        && request.resource.data.deletedAt == resource.data.deletedAt
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /documents/{id} {
+      allow read: if ownsEmployee(resource.data.employeeId);
+      allow create: if ownsEmployee(request.resource.data.employeeId) && (
+        isAdmin() || request.resource.data.documentType == 'EMIRATES_ID'
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    match /app_settings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
   }
 }

@@ -44,8 +44,12 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (isReady && !isAuthenticated) {
       router.replace('/login');
+      return;
     }
-  }, [isReady, isAuthenticated]);
+    if (isReady && user?.role === 'EMPLOYEE') {
+      router.replace('/me');
+    }
+  }, [isReady, isAuthenticated, user?.role]);
 
   const profileLoaded = useRef(false);
 

@@ -9,9 +9,11 @@ import { statusLabel } from './form-utils';
 interface EmployeeFormProps {
   control: Control<EmployeeFormValues>;
   errors: FieldErrors<EmployeeFormValues>;
+  variant?: 'admin' | 'self';
 }
 
-export function EmployeeForm({ control, errors }: EmployeeFormProps) {
+export function EmployeeForm({ control, errors, variant = 'admin' }: EmployeeFormProps) {
+  const isSelf = variant === 'self';
   return (
     <View style={styles.form}>
       <Text style={styles.section}>Personal information</Text>
@@ -94,24 +96,36 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
       </Field>
 
       <Text style={styles.section}>Contact</Text>
-      <Field label="Email" error={errors.email?.message}>
-        <Controller
-          control={control}
-          name="email"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              autoCapitalize="none"
-              keyboardType="email-address"
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="email@company.com"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={value ?? ''}
-            />
-          )}
-        />
-      </Field>
+      {isSelf ? (
+        <Field label="Email" hint="This is your login email and cannot be changed here.">
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { value } }) => (
+              <TextInput editable={false} style={[styles.input, styles.inputLocked]} value={value ?? ''} />
+            )}
+          />
+        </Field>
+      ) : (
+        <Field label="Email" error={errors.email?.message}>
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                autoCapitalize="none"
+                keyboardType="email-address"
+                onBlur={onBlur}
+                onChangeText={onChange}
+                placeholder="email@company.com"
+                placeholderTextColor="#9ca3af"
+                style={styles.input}
+                value={value ?? ''}
+              />
+            )}
+          />
+        </Field>
+      )}
       <Field label="Phone" error={errors.phone?.message}>
         <Controller
           control={control}
@@ -148,23 +162,25 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
       </Field>
 
       <Text style={styles.section}>Employment</Text>
-      <Field label="Employee code" error={errors.employeeCode?.message}>
-        <Controller
-          control={control}
-          name="employeeCode"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              autoCapitalize="characters"
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="EMP-001"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={value}
-            />
-          )}
-        />
-      </Field>
+      {isSelf ? null : (
+        <Field label="Employee code" error={errors.employeeCode?.message}>
+          <Controller
+            control={control}
+            name="employeeCode"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                autoCapitalize="characters"
+                onBlur={onBlur}
+                onChangeText={onChange}
+                placeholder="EMP-001"
+                placeholderTextColor="#9ca3af"
+                style={styles.input}
+                value={value}
+              />
+            )}
+          />
+        </Field>
+      )}
       <Field label="Job title" error={errors.jobTitle?.message}>
         <Controller
           control={control}
@@ -190,45 +206,49 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
           )}
         />
       </Field>
-      <Text style={styles.label}>Employment status</Text>
-      <Controller
-        control={control}
-        name="employmentStatus"
-        render={({ field: { onChange, value } }) => (
-          <View style={styles.chips}>
-            {employmentStatuses.map((option) => (
-              <Pressable
-                key={option}
-                onPress={() => onChange(option)}
-                style={[styles.chip, value === option ? styles.chipActive : null]}
-              >
-                <Text style={[styles.chipText, value === option ? styles.chipTextActive : null]}>
-                  {statusLabel(option)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-      />
+      {isSelf ? null : (
+        <>
+          <Text style={styles.label}>Employment status</Text>
+          <Controller
+            control={control}
+            name="employmentStatus"
+            render={({ field: { onChange, value } }) => (
+              <View style={styles.chips}>
+                {employmentStatuses.map((option) => (
+                  <Pressable
+                    key={option}
+                    onPress={() => onChange(option)}
+                    style={[styles.chip, value === option ? styles.chipActive : null]}
+                  >
+                    <Text style={[styles.chipText, value === option ? styles.chipTextActive : null]}>
+                      {statusLabel(option)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          />
 
-      <Text style={styles.section}>Salary</Text>
-      <Field label="Basic salary" error={errors.basicSalary?.message}>
-        <Controller
-          control={control}
-          name="basicSalary"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              keyboardType="decimal-pad"
-              onBlur={onBlur}
-              onChangeText={onChange}
-              placeholder="0.00"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={value ?? ''}
+          <Text style={styles.section}>Salary</Text>
+          <Field label="Basic salary" error={errors.basicSalary?.message}>
+            <Controller
+              control={control}
+              name="basicSalary"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <TextInput
+                  keyboardType="decimal-pad"
+                  onBlur={onBlur}
+                  onChangeText={onChange}
+                  placeholder="0.00"
+                  placeholderTextColor="#9ca3af"
+                  style={styles.input}
+                  value={value ?? ''}
+                />
+              )}
             />
-          )}
-        />
-      </Field>
+          </Field>
+        </>
+      )}
     </View>
   );
 }
@@ -236,16 +256,19 @@ export function EmployeeForm({ control, errors }: EmployeeFormProps) {
 function Field({
   label,
   error,
+  hint,
   children,
 }: {
   label: string;
   error?: string;
+  hint?: string;
   children: ReactNode;
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       {children}
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
@@ -279,6 +302,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
+  inputLocked: {
+    backgroundColor: '#f3f4f6',
+    color: '#6b7280',
+  },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -304,5 +331,10 @@ const styles = StyleSheet.create({
   error: {
     color: '#b91c1c',
     fontSize: 13,
+  },
+  hint: {
+    color: '#6b7280',
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

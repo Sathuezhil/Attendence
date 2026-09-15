@@ -1,19 +1,26 @@
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 import { useAuth } from '@/features/auth/auth-context';
+import { homeHref } from '@/features/auth/types';
 
 export default function IndexScreen() {
-  const { isReady, isAuthenticated } = useAuth();
+  const { isReady, isAuthenticated, user } = useAuth();
 
   if (!isReady) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#111827" />
+        <Image
+          accessibilityLabel="App logo"
+          resizeMode="contain"
+          source={require('../../assets/images/brand-logo.png')}
+          style={styles.logo}
+        />
+        <ActivityIndicator size="large" color="#1fb6a6" />
       </View>
     );
   }
 
-  return <Redirect href={isAuthenticated ? '/dashboard' : '/login'} />;
+  return <Redirect href={isAuthenticated ? homeHref(user?.role) : '/login'} />;
 }
 
 const styles = StyleSheet.create({
@@ -21,6 +28,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f4f6f8',
+    backgroundColor: '#000000',
+    gap: 24,
+  },
+  logo: {
+    width: 160,
+    height: 160,
+    borderRadius: 28,
   },
 });

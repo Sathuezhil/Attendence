@@ -9,6 +9,7 @@ import {
   getById,
   includesInsensitive,
   listCollection,
+  listWhere,
   paginate,
   removeRecord,
   updateRecord,
@@ -82,11 +83,53 @@ function mapDocument(
 }
 
 async function warningDays(): Promise<number> {
-  const settings = await loadSettings();
-  return settings.documents.expiryWarningDays;
+  try {
+    const settings = await loadSettings();
+    return settings.documents.expiryWarningDays;
+  } catch {
+    return 30;
+  }
+}
+
+function employeeSummary(employee: {
+  id: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+}): DocumentListItem['employee'] {
+  return {
+    id: employee.id,
+    employeeCode: employee.employeeCode,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    fullName: employee.fullName,
+  };
 }
 
 export async function fetchDocuments(params: DocumentListParams = {}): Promise<PaginatedDocuments> {
+  if (params.employeeId) {
+    let rows = await fetchEmployeeDocuments(params.employeeId);
+    const search = params.search?.trim() ?? '';
+    if (params.documentType) rows = rows.filter((row) => row.documentType === params.documentType);
+    if (params.expiryStatus) rows = rows.filter((row) => row.expiryStatus === params.expiryStatus);
+    if (params.expired) rows = rows.filter((row) => row.expiryStatus === 'EXPIRED');
+    if (params.expiringWithin) {
+      rows = rows.filter((row) => row.expiryStatus === 'EXPIRING_SOON' || row.expiryStatus === 'EXPIRED');
+    }
+    if (params.expiryFrom) rows = rows.filter((row) => (row.expiryDate ?? '') >= params.expiryFrom!);
+    if (params.expiryTo) rows = rows.filter((row) => (row.expiryDate ?? '') <= params.expiryTo!);
+    if (search) {
+      rows = rows.filter(
+        (row) =>
+          includesInsensitive(row.employee.fullName, search) ||
+          includesInsensitive(row.employee.employeeCode, search) ||
+          includesInsensitive(row.fileName, search),
+      );
+    }
+    return paginate(rows, params.page, params.limit);
+  }
+
   const employees = await loadEmployeeMap();
   const warning = await warningDays();
   const search = params.search?.trim() ?? '';
@@ -96,21 +139,10 @@ export async function fetchDocuments(params: DocumentListParams = {}): Promise<P
       if (!employee) {
         return null;
       }
-      return mapDocument(
-        row,
-        {
-          id: employee.id,
-          employeeCode: employee.employeeCode,
-          firstName: employee.firstName,
-          lastName: employee.lastName,
-          fullName: employee.fullName,
-        },
-        warning,
-      ) as DocumentListItem;
+      return mapDocument(row, employeeSummary(employee), warning) as DocumentListItem;
     })
     .filter((row): row is DocumentListItem => row !== null);
 
-  if (params.employeeId) rows = rows.filter((row) => row.employeeId === params.employeeId);
   if (params.documentType) rows = rows.filter((row) => row.documentType === params.documentType);
   if (params.expiryStatus) rows = rows.filter((row) => row.expiryStatus === params.expiryStatus);
   if (params.expired) rows = rows.filter((row) => row.expiryStatus === 'EXPIRED');
@@ -132,29 +164,17 @@ export async function fetchDocuments(params: DocumentListParams = {}): Promise<P
 }
 
 export async function fetchEmployeeDocuments(employeeId: string): Promise<DocumentListItem[]> {
-  const result = await fetchDocuments({ employeeId, limit: 500 });
-  return result.data;
+  const employee = await fetchEmployee(employeeId);
+  const warning = await warningDays();
+  return (await listWhere('documents', 'employeeId', employeeId))
+    .map((row) => mapDocument(row, employeeSummary(employee), warning) as DocumentListItem)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function fetchDocument(id: string): Promise<DocumentDetail> {
   const row = await getById('documents', id);
-  const employees = await loadEmployeeMap();
-  const employee = employees.get(asString(row.employeeId));
-  if (!employee) {
-    throw new ApiError('Employee not found', 404);
-  }
-  return mapDocument(
-    row,
-    {
-      id: employee.id,
-      employeeCode: employee.employeeCode,
-      firstName: employee.firstName,
-      lastName: employee.lastName,
-      fullName: employee.fullName,
-    },
-    await warningDays(),
-    true,
-  ) as DocumentDetail;
+  const employee = await fetchEmployee(asString(row.employeeId));
+  return mapDocument(row, employeeSummary(employee), await warningDays(), true) as DocumentDetail;
 }
 
 export async function updateDocument(

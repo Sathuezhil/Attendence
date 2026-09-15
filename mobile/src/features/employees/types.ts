@@ -8,6 +8,7 @@ export interface Employee {
   lastName: string;
   fullName: string;
   email: string | null;
+  authUid: string | null;
   phone: string | null;
   alternatePhone: string | null;
   dateOfBirth: string | null;

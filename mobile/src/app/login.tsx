@@ -5,6 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,18 +18,27 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/features/auth/auth-context';
 import {
+  employeeRegisterSchema,
   loginSchema,
   registerSchema,
+  type EmployeeRegisterFormValues,
   type LoginFormValues,
   type RegisterFormValues,
 } from '@/features/auth/schema';
+import { homeHref } from '@/features/auth/types';
+import { adminAccountExists } from '@/features/auth/api';
 import { ApiError } from '@/lib/api';
 
+type Portal = 'ADMIN' | 'EMPLOYEE';
+type Mode = 'login' | 'register';
+
 export default function LoginScreen() {
-  const { isReady, isAuthenticated, login, register } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const { isReady, isAuthenticated, user, login, register, registerEmployee } = useAuth();
+  const [portal, setPortal] = useState<Portal>('ADMIN');
+  const [mode, setMode] = useState<Mode>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [adminExists, setAdminExists] = useState(true);
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -47,11 +57,49 @@ export default function LoginScreen() {
     },
   });
 
+  const employeeRegisterForm = useForm<EmployeeRegisterFormValues>({
+    resolver: zodResolver(employeeRegisterSchema),
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
+    },
+  });
+
   useEffect(() => {
     if (isReady && isAuthenticated) {
-      router.replace('/dashboard');
+      router.replace(homeHref(user?.role));
     }
-  }, [isReady, isAuthenticated]);
+  }, [isReady, isAuthenticated, user?.role]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void adminAccountExists().then((exists) => {
+      if (!cancelled) {
+        setAdminExists(exists);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (portal === 'ADMIN' && adminExists && mode === 'register') {
+      setMode('login');
+    }
+  }, [adminExists, mode, portal]);
+
+  useEffect(() => {
+    loginForm.reset({ email: '', password: '' });
+    setShowPassword(false);
+    setServerError(null);
+    const timer = setTimeout(() => {
+      loginForm.reset({ email: '', password: '' });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [loginForm, portal]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -74,7 +122,11 @@ export default function LoginScreen() {
   }
 
   const isSubmitting =
-    mode === 'login' ? loginForm.formState.isSubmitting : registerForm.formState.isSubmitting;
+    mode === 'login'
+      ? loginForm.formState.isSubmitting
+      : portal === 'ADMIN'
+        ? registerForm.formState.isSubmitting
+        : employeeRegisterForm.formState.isSubmitting;
 
   const onLogin = loginForm.handleSubmit(async (values) => {
     setServerError(null);
@@ -111,10 +163,46 @@ export default function LoginScreen() {
     }
   });
 
-  const switchMode = (next: 'login' | 'register') => {
+  const onEmployeeRegister = employeeRegisterForm.handleSubmit(async (values) => {
+    setServerError(null);
+
+    try {
+      await registerEmployee(values.firstName, values.lastName, values.email, values.password);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setServerError(error.message);
+        return;
+      }
+
+      setServerError('Unable to create the employee account. Check your connection and try again.');
+    }
+  });
+
+  const switchPortal = (next: Portal) => {
+    setServerError(null);
+    setPortal(next);
+    setMode('login');
+  };
+
+  const switchMode = (next: Mode) => {
     setServerError(null);
     setMode(next);
   };
+
+  const title =
+    mode === 'login'
+      ? 'Sign in'
+      : portal === 'ADMIN'
+        ? 'Create admin'
+        : 'Create employee login';
+  const subtitle =
+    mode === 'login'
+      ? portal === 'ADMIN'
+        ? 'Manage employees, attendance and documents from this admin account.'
+        : 'Sign in to add your details. Admin will see them automatically.'
+      : portal === 'ADMIN'
+        ? 'First time only. This creates the boss account in Firestore.'
+        : 'Create your account. Next you can add your details and Emirates ID.';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -128,18 +216,45 @@ export default function LoginScreen() {
         >
           <View style={styles.container}>
             <View style={styles.heroMark} />
-            <Text style={styles.eyebrow}>Boss / Admin</Text>
-            <Text style={styles.title}>
-              {mode === 'login' ? 'Sign in' : 'Create admin'}
-            </Text>
-            <Text style={styles.subtitle}>
-              {mode === 'login'
-                ? 'Manage employees, attendance and documents from this admin account.'
-                : 'First time only. This creates the boss account in Firestore.'}
-            </Text>
+            <Image
+              accessibilityLabel="App logo"
+              resizeMode="contain"
+              source={require('../../assets/images/brand-logo.png')}
+              style={styles.logo}
+            />
+            <Text style={styles.eyebrow}>{portal === 'ADMIN' ? 'Boss / Admin' : 'Employee'}</Text>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
 
-            <View style={styles.formCard}>
-              {mode === 'register' ? (
+            <View style={styles.portalRow}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => switchPortal('ADMIN')}
+                style={[styles.portalChip, portal === 'ADMIN' ? styles.portalChipActive : null]}
+              >
+                <Text style={[styles.portalText, portal === 'ADMIN' ? styles.portalTextActive : null]}>
+                  Admin
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => switchPortal('EMPLOYEE')}
+                style={[styles.portalChip, portal === 'EMPLOYEE' ? styles.portalChipActive : null]}
+              >
+                <Text style={[styles.portalText, portal === 'EMPLOYEE' ? styles.portalTextActive : null]}>
+                  Employee
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.formCard} {...(Platform.OS === 'web' ? { autoComplete: 'off' } : null)}>
+              {Platform.OS === 'web' ? (
+                <View pointerEvents="none" style={styles.autofillTrap}>
+                  <TextInput autoComplete="username" value="" />
+                  <TextInput autoComplete="current-password" secureTextEntry value="" />
+                </View>
+              ) : null}
+              {mode === 'register' && portal === 'ADMIN' && !adminExists ? (
                 <View style={styles.field}>
                   <Text style={styles.label}>Name</Text>
                   <Controller
@@ -168,44 +283,105 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
+              {mode === 'register' && portal === 'EMPLOYEE' ? (
+                <>
+                  <View style={styles.field}>
+                    <Text style={styles.label}>First name</Text>
+                    <Controller
+                      control={employeeRegisterForm.control}
+                      name="firstName"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <TextInput
+                          autoComplete="given-name"
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                          placeholder="First name"
+                          placeholderTextColor="#9ca3af"
+                          style={[
+                            styles.input,
+                            employeeRegisterForm.formState.errors.firstName
+                              ? styles.inputError
+                              : null,
+                          ]}
+                          value={value}
+                        />
+                      )}
+                    />
+                    {employeeRegisterForm.formState.errors.firstName ? (
+                      <Text style={styles.fieldError}>
+                        {employeeRegisterForm.formState.errors.firstName.message}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.field}>
+                    <Text style={styles.label}>Last name</Text>
+                    <Controller
+                      control={employeeRegisterForm.control}
+                      name="lastName"
+                      render={({ field: { onChange, onBlur, value } }) => (
+                        <TextInput
+                          autoComplete="family-name"
+                          onBlur={onBlur}
+                          onChangeText={onChange}
+                          placeholder="Last name"
+                          placeholderTextColor="#9ca3af"
+                          style={[
+                            styles.input,
+                            employeeRegisterForm.formState.errors.lastName
+                              ? styles.inputError
+                              : null,
+                          ]}
+                          value={value}
+                        />
+                      )}
+                    />
+                    {employeeRegisterForm.formState.errors.lastName ? (
+                      <Text style={styles.fieldError}>
+                        {employeeRegisterForm.formState.errors.lastName.message}
+                      </Text>
+                    ) : null}
+                  </View>
+                </>
+              ) : null}
+
               <View style={styles.field}>
                 <Text style={styles.label}>Email</Text>
                 <Controller
                   control={
-                    (mode === 'login' ? loginForm.control : registerForm.control) as never
+                    (mode === 'login'
+                      ? loginForm.control
+                      : portal === 'ADMIN'
+                        ? registerForm.control
+                        : employeeRegisterForm.control) as never
                   }
                   name="email"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <TextInput
                       autoCapitalize="none"
-                      autoComplete="email"
+                      autoComplete="off"
                       autoCorrect={false}
+                      importantForAutofill="no"
                       keyboardType="email-address"
                       onBlur={onBlur}
                       onChangeText={onChange}
-                      placeholder="admin@company.com"
+                      placeholder={
+                        portal === 'ADMIN' ? 'Email' : 'you@company.com'
+                      }
                       placeholderTextColor="#9ca3af"
                       style={[
                         styles.input,
-                        (mode === 'login'
-                          ? loginForm.formState.errors.email
-                          : registerForm.formState.errors.email)
+                        emailError(mode, portal, loginForm, registerForm, employeeRegisterForm)
                           ? styles.inputError
                           : null,
                       ]}
-                      textContentType="username"
+                      textContentType="none"
                       value={value}
                     />
                   )}
                 />
-                {(mode === 'login'
-                  ? loginForm.formState.errors.email
-                  : registerForm.formState.errors.email) ? (
+                {emailError(mode, portal, loginForm, registerForm, employeeRegisterForm) ? (
                   <Text style={styles.fieldError}>
-                    {(mode === 'login'
-                      ? loginForm.formState.errors.email
-                      : registerForm.formState.errors.email
-                    )?.message}
+                    {emailError(mode, portal, loginForm, registerForm, employeeRegisterForm)}
                   </Text>
                 ) : null}
               </View>
@@ -215,31 +391,32 @@ export default function LoginScreen() {
                 <View style={styles.passwordRow}>
                   <Controller
                     control={
-                    (mode === 'login' ? loginForm.control : registerForm.control) as never
-                  }
+                      (mode === 'login'
+                        ? loginForm.control
+                        : portal === 'ADMIN'
+                          ? registerForm.control
+                          : employeeRegisterForm.control) as never
+                    }
                     name="password"
                     render={({ field: { onChange, onBlur, value } }) => (
                       <TextInput
                         autoCapitalize="none"
-                        autoComplete={mode === 'login' ? 'password' : 'password-new'}
+                        autoComplete="off"
+                        importantForAutofill="no"
                         onBlur={onBlur}
                         onChangeText={onChange}
                         placeholder={
-                          mode === 'login'
-                            ? 'Enter your password'
-                            : 'At least 8 characters'
+                          mode === 'login' ? 'Enter your password' : 'At least 8 characters'
                         }
                         placeholderTextColor="#9ca3af"
                         secureTextEntry={!showPassword}
                         style={[
                           styles.passwordInput,
-                          (mode === 'login'
-                            ? loginForm.formState.errors.password
-                            : registerForm.formState.errors.password)
+                          passwordError(mode, portal, loginForm, registerForm, employeeRegisterForm)
                             ? styles.inputError
                             : null,
                         ]}
-                        textContentType={mode === 'login' ? 'password' : 'newPassword'}
+                        textContentType="none"
                         value={value}
                       />
                     )}
@@ -253,14 +430,9 @@ export default function LoginScreen() {
                     <Text style={styles.showButtonText}>{showPassword ? 'Hide' : 'Show'}</Text>
                   </Pressable>
                 </View>
-                {(mode === 'login'
-                  ? loginForm.formState.errors.password
-                  : registerForm.formState.errors.password) ? (
+                {passwordError(mode, portal, loginForm, registerForm, employeeRegisterForm) ? (
                   <Text style={styles.fieldError}>
-                    {(mode === 'login'
-                      ? loginForm.formState.errors.password
-                      : registerForm.formState.errors.password
-                    )?.message}
+                    {passwordError(mode, portal, loginForm, registerForm, employeeRegisterForm)}
                   </Text>
                 ) : null}
               </View>
@@ -269,37 +441,81 @@ export default function LoginScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={mode === 'login' ? 'Sign in' : 'Create admin'}
+                accessibilityLabel={title}
                 disabled={isSubmitting}
-                onPress={() => void (mode === 'login' ? onLogin() : onRegister())}
+                onPress={() =>
+                  void (mode === 'login'
+                    ? onLogin()
+                    : portal === 'ADMIN'
+                      ? onRegister()
+                      : onEmployeeRegister())
+                }
                 style={[styles.button, isSubmitting ? styles.buttonDisabled : null]}
               >
                 {isSubmitting ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text style={styles.buttonText}>
-                    {mode === 'login' ? 'Sign in' : 'Create admin'}
+                    {mode === 'login'
+                      ? 'Sign in'
+                      : portal === 'ADMIN'
+                        ? 'Create admin'
+                        : 'Create employee login'}
                   </Text>
                 )}
               </Pressable>
 
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => switchMode(mode === 'login' ? 'register' : 'login')}
-                style={styles.switchMode}
-              >
-                <Text style={styles.switchModeText}>
-                  {mode === 'login'
-                    ? 'First time? Create admin account'
-                    : 'Already have an account? Sign in'}
-                </Text>
-              </Pressable>
+              {portal === 'ADMIN' && adminExists ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => switchMode(mode === 'login' ? 'register' : 'login')}
+                  style={styles.switchMode}
+                >
+                  <Text style={styles.switchModeText}>
+                    {mode === 'login'
+                      ? portal === 'ADMIN'
+                        ? 'First time? Create admin account'
+                        : 'First time? Create employee login'
+                      : 'Already have an account? Sign in'}
+                  </Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function emailError(
+  mode: Mode,
+  portal: Portal,
+  loginForm: ReturnType<typeof useForm<LoginFormValues>>,
+  registerForm: ReturnType<typeof useForm<RegisterFormValues>>,
+  employeeRegisterForm: ReturnType<typeof useForm<EmployeeRegisterFormValues>>,
+) {
+  if (mode === 'login') {
+    return loginForm.formState.errors.email?.message;
+  }
+  return portal === 'ADMIN'
+    ? registerForm.formState.errors.email?.message
+    : employeeRegisterForm.formState.errors.email?.message;
+}
+
+function passwordError(
+  mode: Mode,
+  portal: Portal,
+  loginForm: ReturnType<typeof useForm<LoginFormValues>>,
+  registerForm: ReturnType<typeof useForm<RegisterFormValues>>,
+  employeeRegisterForm: ReturnType<typeof useForm<EmployeeRegisterFormValues>>,
+) {
+  if (mode === 'login') {
+    return loginForm.formState.errors.password?.message;
+  }
+  return portal === 'ADMIN'
+    ? registerForm.formState.errors.password?.message
+    : employeeRegisterForm.formState.errors.password?.message;
 }
 
 const styles = StyleSheet.create({
@@ -332,6 +548,14 @@ const styles = StyleSheet.create({
     right: -50,
     top: -70,
   },
+  logo: {
+    width: 88,
+    height: 88,
+    borderRadius: 18,
+    backgroundColor: '#000000',
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
   eyebrow: {
     fontSize: 13,
     fontWeight: '700',
@@ -351,14 +575,46 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#3d4d5c',
   },
+  portalRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 20,
+  },
+  portalChip: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d5dee8',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  portalChipActive: {
+    backgroundColor: '#0c4a62',
+    borderColor: '#0c4a62',
+  },
+  portalText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0e5a72',
+  },
+  portalTextActive: {
+    color: '#ffffff',
+  },
   formCard: {
-    marginTop: 28,
+    marginTop: 16,
     gap: 16,
     backgroundColor: '#ffffff',
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
     borderColor: '#d5dee8',
+  },
+  autofillTrap: {
+    height: 0,
+    overflow: 'hidden',
+    opacity: 0,
   },
   field: {
     gap: 8,

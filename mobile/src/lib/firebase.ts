@@ -121,7 +121,7 @@ export function mapAuthError(error: unknown): ApiError {
     case 'auth/invalid-email':
       return new ApiError('Invalid email or password.', 401);
     case 'auth/email-already-in-use':
-      return new ApiError('An admin account already exists. Sign in instead.', 403);
+      return new ApiError('This email already has a login. Sign in instead.', 403);
     case 'auth/weak-password':
       return new ApiError('Password must be at least 6 characters.', 400);
     case 'auth/too-many-requests':

@@ -8,12 +8,16 @@ import {
   createRecord,
   emptyToNull,
   fullName,
+  getByIdOrNull,
   includesInsensitive,
   listCollection,
+  listWhere,
   paginate,
+  setRecord,
   updateRecord,
   writeAudit,
 } from '@/lib/data';
+import { requireUser } from '@/lib/firebase';
 import {
   Employee,
   EmployeeWritePayload,
@@ -40,6 +44,7 @@ export function mapEmployee(row: Record<string, unknown> & { id: string }): Empl
     lastName: asString(row.lastName),
     fullName: fullName(row.firstName, row.lastName),
     email: asStringOrNull(row.email),
+    authUid: asStringOrNull(row.authUid),
     phone: asStringOrNull(row.phone),
     alternatePhone: asStringOrNull(row.alternatePhone),
     dateOfBirth: asDateOnly(row.dateOfBirth),
@@ -84,7 +89,7 @@ function toWriteData(payload: EmployeeWritePayload) {
     employeeCode: payload.employeeCode.trim(),
     firstName: payload.firstName.trim(),
     lastName: payload.lastName.trim(),
-    email: emptyToNull(payload.email ?? null) ?? null,
+    email: emptyToNull(payload.email?.trim().toLowerCase() ?? null) ?? null,
     phone: emptyToNull(payload.phone ?? null) ?? null,
     alternatePhone: emptyToNull(payload.alternatePhone ?? null) ?? null,
     dateOfBirth: payload.dateOfBirth ?? null,
@@ -131,12 +136,107 @@ export async function fetchEmployees(params: EmployeeListParams = {}): Promise<P
 }
 
 export async function fetchEmployee(id: string): Promise<Employee> {
-  const rows = await loadEmployeeRows();
-  const row = rows.find((item) => item.id === id);
-  if (!row) {
+  const row = await getByIdOrNull('employees', id);
+  if (!row || !isActiveEmployee(row)) {
     throw new ApiError('Employee not found', 404);
   }
   return mapEmployee(row);
+}
+
+export async function findEmployeeByEmail(email: string): Promise<Employee | null> {
+  const needle = email.trim().toLowerCase();
+  if (!needle) {
+    return null;
+  }
+  const rows = (await listWhere('employees', 'email', needle)).filter(isActiveEmployee);
+  return rows[0] ? mapEmployee(rows[0]) : null;
+}
+
+export async function findEmployeeByAuthUid(uid: string): Promise<Employee | null> {
+  const rows = (await listWhere('employees', 'authUid', uid)).filter(isActiveEmployee);
+  return rows[0] ? mapEmployee(rows[0]) : null;
+}
+
+export async function linkEmployeeAuth(employeeId: string, uid: string): Promise<Employee> {
+  const updated = await updateRecord('employees', employeeId, { authUid: uid });
+  return mapEmployee(updated);
+}
+
+export async function createSelfEmployee(payload: {
+  firstName: string;
+  lastName: string;
+  email: string;
+}): Promise<Employee> {
+  const user = requireUser();
+  const email = payload.email.trim().toLowerCase();
+  const byUid = await findEmployeeByAuthUid(user.uid);
+  if (byUid) {
+    return byUid;
+  }
+
+  const byEmail = await findEmployeeByEmail(email);
+  if (byEmail) {
+    if (byEmail.authUid && byEmail.authUid !== user.uid) {
+      throw new ApiError('This email is already used by another employee.', 409);
+    }
+    return byEmail.authUid ? byEmail : await linkEmployeeAuth(byEmail.id, user.uid);
+  }
+
+  const firstName = payload.firstName.trim() || 'New';
+  const lastName = payload.lastName.trim() || 'Employee';
+  const saved = await setRecord('employees', user.uid, {
+    employeeCode: `EMP-${user.uid.slice(0, 8).toUpperCase()}`,
+    firstName,
+    lastName,
+    email,
+    authUid: user.uid,
+    phone: null,
+    alternatePhone: null,
+    dateOfBirth: null,
+    gender: null,
+    nationality: null,
+    jobTitle: null,
+    joiningDate: null,
+    status: 'ACTIVE',
+    salary: null,
+    deletedAt: null,
+    createdAt: new Date().toISOString(),
+  });
+  await writeAudit('create', 'employee', saved.id);
+  return mapEmployee(saved);
+}
+
+export async function updateMyEmployee(payload: EmployeeWritePayload): Promise<Employee> {
+  const current = await fetchMyEmployee();
+  assertDateRules(payload.dateOfBirth, payload.joiningDate);
+  const { deletedAt: _ignored, ...profile } = toWriteData({
+    ...payload,
+    employeeCode: current.employeeCode,
+    email: current.email,
+    employmentStatus: current.employmentStatus,
+    basicSalary: current.basicSalary,
+  });
+  const updated = await updateRecord('employees', current.id, {
+    ...profile,
+    authUid: current.authUid ?? requireUser().uid,
+  });
+  await writeAudit('update', 'employee', current.id);
+  return mapEmployee(updated);
+}
+
+export async function fetchMyEmployee(): Promise<Employee> {
+  const user = requireUser();
+  const byUid = await findEmployeeByAuthUid(user.uid);
+  if (byUid) {
+    return byUid;
+  }
+  if (user.email) {
+    const byEmail = await findEmployeeByEmail(user.email);
+    if (byEmail) {
+      return byEmail;
+    }
+  }
+  throw new ApiError('Employee profile not found', 404);
 }
 
 export async function createEmployee(payload: EmployeeWritePayload): Promise<Employee> {
